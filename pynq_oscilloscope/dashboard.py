@@ -17,7 +17,7 @@ class OscilloscopeDashboard:
     def __init__(self, overlay=None, packet_size: int = 16384, display_window: int = 1024):
         self.overlay = overlay
         self.packet_size = packet_size
-        self.display_window = display_window  # Default 1024 samples display view
+        self.display_window = display_window
         
         self._is_running = False
         self._thread = None
@@ -121,7 +121,7 @@ class OscilloscopeDashboard:
             template="plotly_dark",
             height=450,
             margin=dict(l=40, r=20, t=50, b=40),
-            uirevision="oscilloscope_view_state"  # Preserves user zoom & pan
+            uirevision="oscilloscope_view_state"
         )
 
     def _on_start_clicked(self, b):
@@ -144,6 +144,21 @@ class OscilloscopeDashboard:
                 amplitude=float(self.amp_slider.value)
             )
 
+            # --- SYNCHRONIZATION HANDSHAKE ---
+            # Wait for AD3 USB hardware initialization before taking the first acquisition frame
+            wait_start = time.time()
+            while self._is_running and not self.ad3.is_ready:
+                time.sleep(0.05)
+                if time.time() - wait_start > 4.0:
+                    break
+
+            # Flush initial stale frame before entering main loop
+            if self.xadc and self._is_running:
+                try:
+                    _ = self.xadc.capture(crop_startup_samples=8)
+                except Exception:
+                    pass
+
             while self._is_running:
                 # Update AD3 parameters dynamically if changed via UI
                 self.ad3.update_parameters(
@@ -152,18 +167,17 @@ class OscilloscopeDashboard:
                     amplitude=float(self.amp_slider.value)
                 )
 
-                # Capture frame from XADC DMA (if overlay available)
+                # Capture frame from XADC DMA
                 if self.xadc:
                     voltages = self.xadc.capture(crop_startup_samples=8)
                 else:
-                    # Simulation mode if no hardware overlay provided
                     t = np.linspace(0, 0.016, self.packet_size)
                     voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
 
                 # --- FEATURE 1: SOFTWARE RISING-EDGE TRIGGER ---
                 trigger_idx = 0
                 if self.trigger_toggle.value and len(voltages) > 1:
-                    threshold = 1.65  # Midpoint threshold for 0V-3.3V range
+                    threshold = 1.65
                     crossings = np.where((voltages[:-1] <= threshold) & (voltages[1:] > threshold))[0]
                     if len(crossings) > 0:
                         trigger_idx = crossings[0]
@@ -173,7 +187,6 @@ class OscilloscopeDashboard:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
                     show_samples = int(5 * period_us)
-                    # Constrain visible samples between 40 and 1024
                     show_samples = max(40, min(show_samples, self.display_window))
                     
                     max_idx = min(trigger_idx + show_samples, len(voltages))
@@ -199,7 +212,6 @@ class OscilloscopeDashboard:
                     vpp = np.max(voltages) - np.min(voltages)
                     self.readout.value = f"<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
 
-                # Throttle update rate to ~25 FPS to prevent browser lag
                 time.sleep(0.04)
 
         except Exception as e:

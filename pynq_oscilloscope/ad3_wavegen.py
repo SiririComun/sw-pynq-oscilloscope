@@ -20,6 +20,7 @@ class AD3SignalGenerator:
     def __init__(self):
         self.dwf = DwfLibrary()
         self.is_running = False
+        self.is_ready = False  # Hardware readiness handshake flag
         self._thread: Optional[threading.Thread] = None
         self._device_handle = None
         
@@ -33,7 +34,7 @@ class AD3SignalGenerator:
     def _worker(self):
         """Background thread execution loop."""
         try:
-            # Open physical connection to AD3
+            # Open physical USB connection to AD3 (takes ~1.5 - 2.0 seconds)
             self._device_handle = openDwfDevice(self.dwf)
             wavegen = self._device_handle.analogOut
             
@@ -47,7 +48,8 @@ class AD3SignalGenerator:
             
             # Start generation
             wavegen.configure(self.channel, True)
-            print("[AD3] Wavegen started successfully in background thread.")
+            self.is_ready = True  # Signal readiness to the dashboard
+            print("[AD3] Wavegen initialized and signal active.")
             
             prev_shape = self.shape_name
             prev_freq = self.frequency
@@ -77,6 +79,7 @@ class AD3SignalGenerator:
                 time.sleep(0.05)
                 
             # Clean shutdown sequence
+            self.is_ready = False
             wavegen.configure(self.channel, False)
             if self._device_handle:
                 self._device_handle.close()
@@ -85,6 +88,7 @@ class AD3SignalGenerator:
             
         except Exception as e:
             print(f"[AD3] Error in background wavegen thread: {e}")
+            self.is_ready = False
             self.is_running = False
 
     def start(self, shape: str = "Sine", frequency: float = 10000.0, amplitude: float = 1.5, offset: float = 1.65):
@@ -93,6 +97,7 @@ class AD3SignalGenerator:
             print("[AD3] Wavegen is already running.")
             return
 
+        self.is_ready = False
         self.shape_name = shape
         self.frequency = float(frequency)
         self.amplitude = float(amplitude)
@@ -113,6 +118,7 @@ class AD3SignalGenerator:
 
     def stop(self):
         """Stop background wavegen thread and close AD3 device."""
+        self.is_ready = False
         if self.is_running:
             self.is_running = False
             if self._thread and self._thread.is_alive():
