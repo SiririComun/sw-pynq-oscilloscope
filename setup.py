@@ -1,0 +1,32 @@
+import os
+from setuptools import setup, find_packages
+
+long_description = ""
+if os.path.exists("README.md"):
+    with open("README.md", "r", encoding="utf-8") as fh:
+        long_description = fh.read()
+
+setup(
+    name="pynq_oscilloscope",
+    version="1.0.0",
+    author="Juan Pablo Sánchez (SiririComun)",
+    description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/SiririComun/sw-pynq-oscilloscope",
+    packages=find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: POSIX :: Linux",
+    ],
+    python_requires=">=3.8",
+    install_requires=[
+        "numpy>=1.22.0",
+        "plotly>=5.10.0",
+        "ipywidgets>=8.0.0",
+        "pydwf>=1.1.0",
+        "pynq>=2.7.0",
+    ],
+    include_package_data=True,
+)

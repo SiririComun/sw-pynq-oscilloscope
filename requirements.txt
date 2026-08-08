@@ -1,0 +1,5 @@
+numpy>=1.22.0
+plotly>=5.10.0
+ipywidgets>=8.0.0
+pydwf>=1.1.0
+pynq>=2.7.0
