@@ -22,7 +22,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "numpy>=1.22.0",
+        "numpy>=1.19.0",
         "plotly>=5.10.0",
         "ipywidgets>=8.0.0",
         "pydwf>=1.1.0",
