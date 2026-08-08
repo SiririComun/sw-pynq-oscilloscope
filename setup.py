@@ -7,7 +7,7 @@ if os.path.exists("README.md"):
         long_description = fh.read()
 
 setup(
-    name="pynq_oscilloscope",
+    name="pynq-oscilloscope",  # Package name for pip install
     version="1.0.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
