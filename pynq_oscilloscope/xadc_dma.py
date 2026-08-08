@@ -7,9 +7,10 @@ class StreamingXADC:
     Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
     """
 
-    def __init__(self, overlay, default_packet_size: int = 1024):
+    def __init__(self, overlay, default_packet_size: int = 16384):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
+        Default packet size is set to 16384 to match the hardware tlast_generator.
         """
         # Address-agnostic binding via PYNQ IP dictionary (.hwh metadata)
         if hasattr(overlay, "axi_dma_0"):
@@ -34,7 +35,7 @@ class StreamingXADC:
         # 1. Command DMA to write incoming stream into allocated physical RAM
         self.dma.recvchannel.transfer(self._buffer)
         
-        # 2. Block until hardware transfer completes (asserted by TLAST generator)
+        # 2. Block until hardware transfer completes (asserted by TLAST generator at sample 16384)
         self.dma.recvchannel.wait()
         
         # 3. Cast buffer to NumPy array

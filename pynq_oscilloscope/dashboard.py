@@ -14,7 +14,7 @@ class OscilloscopeDashboard:
     Integrates high-speed XADC DMA data acquisition with AD3 signal generation.
     """
 
-    def __init__(self, overlay=None, packet_size: int = 1024):
+    def __init__(self, overlay=None, packet_size: int = 16384): # Changed from 1024 to 16384
         self.overlay = overlay
         self.packet_size = packet_size
         
