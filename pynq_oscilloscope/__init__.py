@@ -6,6 +6,7 @@ from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.env_checker import install_ad3_drivers, check_usb_permissions
 from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 
 __version__ = "1.0.0"
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "check_usb_permissions",
     "StreamingXADC",
     "AD3SignalGenerator",
+    "OscilloscopeDashboard",
 ]
