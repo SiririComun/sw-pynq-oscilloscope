@@ -24,9 +24,9 @@ setup(
     install_requires=[
         "numpy>=1.19.0",
         "plotly>=5.10.0,<6.0.0",
+        "plotlywidget>=5.10.0,<6.0.0",
         "ipywidgets>=8.0.0",
         "pydwf>=1.1.0",
-        "pynq>=2.7.0",
     ],
     package_data={
         "pynq_oscilloscope": ["../notebooks/*.ipynb", "../hardware.json"],
