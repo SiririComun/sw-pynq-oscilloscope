@@ -56,7 +56,21 @@ cd sw-pynq-oscilloscope
 pip install -e .
 ```
 
-### 2. Install Digilent AD3 Drivers
+### 2. Copy Example Notebooks to Jupyter Workspace
+To copy this project's notebooks into a dedicated subfolder (`/home/xilinx/jupyter_notebooks/pynq_oscilloscope/`) without touching other installed PYNQ packages, run:
+
+```bash
+pynq-oscilloscope-get-notebooks
+```
+
+*Alternatively, inside a Python or Jupyter session:*
+```python
+from pynq_oscilloscope import copy_notebooks
+
+copy_notebooks()
+```
+
+### 3. Install Digilent AD3 Drivers
 Run the automated environment checker inside Python or Jupyter:
 
 ```python
