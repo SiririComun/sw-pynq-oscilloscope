@@ -2,7 +2,7 @@ import os
 import json
 import urllib.request
 from pathlib import Path
-from pynq import Overlay, BOARD
+from pynq import Overlay
 
 class HardwareLoader:
     """
@@ -30,13 +30,32 @@ class HardwareLoader:
     @staticmethod
     def get_board_name() -> str:
         """
-        Detect active board running PYNQ.
+        Detect active board running PYNQ across all PYNQ OS versions (v2.x, v3.x).
         Normalizes 'PYNQ-Z2' -> 'pynq_z2', 'ZedBoard' -> 'zedboard', etc.
         """
+        # 1. Check environment variable set by PYNQ OS ($BOARD)
+        board_env = os.environ.get("BOARD")
+        if board_env:
+            return board_env.lower().replace("-", "_")
+
+        # 2. Check /etc/board.name if on PYNQ Linux
         try:
-            return BOARD.lower().replace("-", "_")
-        except (AttributeError, Exception):
-            return "pynq_z2"  # Fallback default
+            if os.path.exists("/etc/board.name"):
+                with open("/etc/board.name", "r", encoding="utf-8") as f:
+                    return f.read().strip().lower().replace("-", "_")
+        except Exception:
+            pass
+
+        # 3. Try pynq.Device active device name
+        try:
+            from pynq import Device
+            if Device.active_device and Device.active_device.name:
+                return Device.active_device.name.lower().replace("-", "_")
+        except Exception:
+            pass
+
+        # Fallback default for PYNQ-Z2
+        return "pynq_z2"
 
     @classmethod
     def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
