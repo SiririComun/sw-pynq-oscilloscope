@@ -14,9 +14,10 @@ class OscilloscopeDashboard:
     Integrates high-speed XADC DMA data acquisition with AD3 signal generation.
     """
 
-    def __init__(self, overlay=None, packet_size: int = 16384): # Changed from 1024 to 16384
+    def __init__(self, overlay=None, packet_size: int = 16384, display_window: int = 1024):
         self.overlay = overlay
         self.packet_size = packet_size
+        self.display_window = display_window  # Default 1024 samples display view
         
         self._is_running = False
         self._thread = None
@@ -106,14 +107,15 @@ class OscilloscopeDashboard:
         """Construct Plotly FigureWidget Canvas."""
         self.fig = go.FigureWidget()
         self.fig.add_scatter(
-            y=[0] * self.packet_size,
+            x=list(range(self.display_window)),
+            y=[0] * self.display_window,
             mode="lines",
             line=dict(color="#00FFCC", width=2),
-            name="XADC Channel"
+            name="A0 Channel"
         )
         self.fig.update_layout(
             title="<b>Real-Time 1 MSPS DMA Oscilloscope</b>",
-            xaxis_title="Samples / Timebase",
+            xaxis_title="Time (Microseconds)",
             yaxis_title="Voltage (V)",
             yaxis_range=[0, 3.5],
             template="plotly_dark",
@@ -155,7 +157,7 @@ class OscilloscopeDashboard:
                     voltages = self.xadc.capture(crop_startup_samples=8)
                 else:
                     # Simulation mode if no hardware overlay provided
-                    t = np.linspace(0, 0.001, self.packet_size)
+                    t = np.linspace(0, 0.016, self.packet_size)
                     voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
 
                 # --- FEATURE 1: SOFTWARE RISING-EDGE TRIGGER ---
@@ -171,20 +173,28 @@ class OscilloscopeDashboard:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
                     show_samples = int(5 * period_us)
-                    show_samples = max(40, min(show_samples, len(voltages) - trigger_idx))
+                    # Constrain visible samples between 40 and 1024
+                    show_samples = max(40, min(show_samples, self.display_window))
                     
-                    self.fig.layout.xaxis.range = [0, show_samples]
-                    margin = 0.2
-                    amp = float(self.amp_slider.value)
-                    self.fig.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
-                    
-                    plot_voltages = voltages[trigger_idx : trigger_idx + show_samples]
+                    max_idx = min(trigger_idx + show_samples, len(voltages))
+                    plot_voltages = voltages[trigger_idx : max_idx]
                 else:
-                    plot_voltages = voltages[trigger_idx:]
+                    max_idx = min(trigger_idx + self.display_window, len(voltages))
+                    plot_voltages = voltages[trigger_idx : max_idx]
 
-                # Update Canvas & Live Readout
-                self.fig.data[0].y = plot_voltages
-                
+                time_axis = np.arange(len(plot_voltages))
+
+                # --- ATOMIC CANVAS UPDATE ---
+                with self.fig.batch_update():
+                    self.fig.data[0].x = time_axis
+                    self.fig.data[0].y = plot_voltages
+                    if self.autorange_toggle.value:
+                        amp = float(self.amp_slider.value)
+                        margin = 0.2
+                        self.fig.layout.xaxis.range = [0, len(plot_voltages)]
+                        self.fig.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
+
+                # Update Live Vpp Readout
                 if len(voltages) > 0:
                     vpp = np.max(voltages) - np.min(voltages)
                     self.readout.value = f"<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
