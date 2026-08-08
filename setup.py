@@ -28,5 +28,13 @@ setup(
         "pydwf>=1.1.0",
         "pynq>=2.7.0",
     ],
+    package_data={
+        "pynq_oscilloscope": ["../notebooks/*.ipynb", "../hardware.json"],
+    },
     include_package_data=True,
+    entry_points={
+        "console_scripts": [
+            "pynq-oscilloscope-get-notebooks=pynq_oscilloscope.notebooks:copy_notebooks",
+        ],
+    },
 )
