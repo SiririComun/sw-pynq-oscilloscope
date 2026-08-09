@@ -1,6 +1,6 @@
 # Real-Time 1 MSPS PYNQ Oscilloscope
 
-[![Python Package](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org)
+[![PyPI Version](https://img.shields.io/pypi/v/pynq-oscilloscope.svg)](https://pypi.org/project/pynq-oscilloscope/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.0.2-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
 [![Board Support](https://img.shields.io/badge/Board-PYNQ--Z2-green.svg)](https://tul.com.tw/ProductsPYNQ-Z2.html)
@@ -47,13 +47,11 @@ Before running the application, make sure your hardware is connected according t
 
 ## 🚀 Quick Start & Installation
 
-### 1. Clone & Install Python Package
+### 1. Install Package from PyPI
 Connect to your PYNQ board via SSH or Jupyter Terminal and run:
 
 ```bash
-git clone https://github.com/SiririComun/sw-pynq-oscilloscope.git
-cd sw-pynq-oscilloscope
-pip install -e .
+pip install pynq-oscilloscope
 ```
 
 ### 2. Copy Example Notebooks to Jupyter Workspace
@@ -80,7 +78,33 @@ from pynq_oscilloscope import install_ad3_drivers
 install_ad3_drivers()
 ```
 
-*For manual driver installation or troubleshooting, refer to [docs/AD3_SETUP.md](docs/AD3_SETUP.md).*
+---
+
+## 🧪 Isolated Virtual Environment Setup Guide (Optional)
+
+If you want to test or run `pynq-oscilloscope` inside an isolated Python virtual environment on your PYNQ board:
+
+```bash
+# 1. Create a virtual environment with system site-packages enabled
+python3 -m venv --system-site-packages /home/xilinx/clean_test_env
+source /home/xilinx/clean_test_env/bin/activate
+
+# 2. Link PYNQ system driver site-packages
+echo "/usr/local/share/pynq-venv/lib/python3.10/site-packages" > /home/xilinx/clean_test_env/lib/python3.10/site-packages/pynq_system.pth
+
+# 3. Install pynq-oscilloscope from PyPI
+pip install --no-deps -I pynq-oscilloscope
+
+# 4. Copy notebooks & register Jupyter kernel
+pynq-oscilloscope-get-notebooks
+pip install ipykernel
+python -m ipykernel install --user --name=clean_test_env --display-name "Python 3 (Clean Test Env)"
+```
+
+In Jupyter Notebook:
+1. Navigate to `pynq_oscilloscope/` and open `03_oscilloscope_dashboard.ipynb`.
+2. Click **Kernel** $\rightarrow$ **Change kernel** $\rightarrow$ **`Python 3 (Clean Test Env)`**.
+3. Run the cells!
 
 ---
 
@@ -98,7 +122,7 @@ This repository includes three progressive interactive notebooks inside the `not
 
 ## 💻 Python Package Usage Example
 
-You can deploy the complete Oscilloscope Dashboard in just 3 lines of Python code:
+You can deploy the complete Oscilloscope Dashboard in 3 lines of Python code:
 
 ```python
 from pynq_oscilloscope import HardwareLoader, OscilloscopeDashboard
