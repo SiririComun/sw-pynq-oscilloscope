@@ -10,7 +10,6 @@ class AD3SignalGenerator:
     Executes physical signal generation in a background thread to keep Jupyter kernels responsive.
     """
 
-    # Mapping waveform names to pydwf enum constants
     WAVEFORM_MAP = {
         "Sine": DwfAnalogOutFunction.Sine,
         "Square": DwfAnalogOutFunction.Square,
@@ -20,21 +19,20 @@ class AD3SignalGenerator:
     def __init__(self):
         self.dwf = DwfLibrary()
         self.is_running = False
-        self.is_ready = False  # Hardware readiness handshake flag
+        self.is_ready = False
         self._thread: Optional[threading.Thread] = None
         self._device_handle = None
         
         # Target state parameters
         self.shape_name = "Sine"
-        self.frequency = 10000.0  # 10 kHz default
-        self.amplitude = 1.5      # 1.5V default
-        self.offset = 1.65        # 1.65V default (safe 0V-3.3V midpoint)
+        self.frequency = 10000.0  # 10 kHz
+        self.amplitude = 1.5      # 1.5V
+        self.offset = 1.65        # 1.65V
         self.channel = 0          # Channel 1 (W1)
 
     def _worker(self):
         """Background thread execution loop."""
         try:
-            # Open physical USB connection to AD3 (takes ~1.5 - 2.0 seconds)
             self._device_handle = openDwfDevice(self.dwf)
             wavegen = self._device_handle.analogOut
             
@@ -46,39 +44,43 @@ class AD3SignalGenerator:
             wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, self.amplitude)
             wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, self.offset)
             
-            # Start generation
             wavegen.configure(self.channel, True)
-            self.is_ready = True  # Signal readiness to the dashboard
+            self.is_ready = True
             print("[AD3] Wavegen initialized and signal active.")
             
             prev_shape = self.shape_name
             prev_freq = self.frequency
             prev_amp = self.amplitude
+            prev_offset = self.offset
             
-            # Keep thread alive and monitor dynamic parameter updates
             while self.is_running:
-                # Update waveform shape if changed
+                # Track shape changes
                 if self.shape_name != prev_shape:
                     prev_shape = self.shape_name
                     func_enum = self.WAVEFORM_MAP.get(prev_shape, DwfAnalogOutFunction.Sine)
                     wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
                     wavegen.configure(self.channel, True)
                     
-                # Update frequency if changed
+                # Track frequency changes
                 if self.frequency != prev_freq:
                     prev_freq = self.frequency
                     wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, prev_freq)
                     wavegen.configure(self.channel, True)
                     
-                # Update amplitude if changed
+                # Track amplitude changes
                 if self.amplitude != prev_amp:
                     prev_amp = self.amplitude
                     wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, prev_amp)
                     wavegen.configure(self.channel, True)
+
+                # Track offset changes (FIXED!)
+                if self.offset != prev_offset:
+                    prev_offset = self.offset
+                    wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, prev_offset)
+                    wavegen.configure(self.channel, True)
                     
                 time.sleep(0.05)
                 
-            # Clean shutdown sequence
             self.is_ready = False
             wavegen.configure(self.channel, False)
             if self._device_handle:
@@ -92,7 +94,6 @@ class AD3SignalGenerator:
             self.is_running = False
 
     def start(self, shape: str = "Sine", frequency: float = 10000.0, amplitude: float = 1.5, offset: float = 1.65):
-        """Start non-blocking wave generation in background thread."""
         if self.is_running:
             print("[AD3] Wavegen is already running.")
             return
@@ -107,17 +108,18 @@ class AD3SignalGenerator:
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
-    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None):
-        """Dynamically update parameters while wavegen is active."""
+    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Dynamically update parameters (including DC offset) while active."""
         if shape is not None and shape in self.WAVEFORM_MAP:
             self.shape_name = shape
         if frequency is not None:
             self.frequency = float(frequency)
         if amplitude is not None:
             self.amplitude = float(amplitude)
+        if offset is not None:
+            self.offset = float(offset)
 
     def stop(self):
-        """Stop background wavegen thread and close AD3 device."""
         self.is_ready = False
         if self.is_running:
             self.is_running = False
