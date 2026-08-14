@@ -2,7 +2,7 @@
 
 [![PyPI Version](https://img.shields.io/pypi/v/pynq-oscilloscope.svg)](https://pypi.org/project/pynq-oscilloscope/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.1.0--rc1-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
+[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.1.0-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
 [![Board Support](https://img.shields.io/badge/Board-PYNQ--Z2-green.svg)](https://tul.com.tw/ProductsPYNQ-Z2.html)
 
 A high-performance, dark-mode real-time Oscilloscope software stack running natively on PYNQ Linux platforms. 
@@ -37,6 +37,38 @@ This repository adopts the **canonical PYNQ Custom Overlay pattern** (`Oscillosc
                     ├── .wavegen  (AD3SignalGenerator)
                     └── .dashboard() (Interactive Plotly Canvas)
 ```
+
+---
+
+## 🖥 Interactive Dashboard UI Guide
+
+![Real-Time 1 MSPS PYNQ Oscilloscope Dashboard](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/dashboard_screenshot.png)
+
+### 1. Control & Action Bar (Row 1)
+* **`▶ Start`:** Initializes the background acquisition worker, turns on AD3 waveform generation, arms the FPGA trigger, and begins DMA streaming.
+* **`■ Stop`:** Cleanly halts the acquisition loop, disarms the trigger, stops the AD3 wavegen, and releases device handles.
+* **`⚡ Force / Arm`:** 
+  * In **Single Mode**, re-arms the FPGA trigger unit to capture the next transient event.
+  * In any mode, pulses bit 4 of `CONTROL_REG` (`0x00`) to force an immediate hardware frame capture.
+* **`Auto-Range` (Toggle):** Dynamically scales the visible horizontal timebase (showing 5–10 signal periods) and adapts the vertical Y-axis limits ($1.65\,\text{V} \pm \text{Amplitude}$ with margin).
+* **`Live Vpp`:** Real-time peak-to-peak voltage calculation updated live ($V_{pp} = V_{\max} - V_{\min}$).
+
+### 2. Hardware Trigger Controls (Row 2)
+* **`Trig Mode`:**
+  * **`Auto`:** Continuous live stream. Locks onto trigger edges when present; if no edge occurs within 50 ms (e.g., disconnected input or threshold out of range), the hardware auto-timeout forces a frame capture so the display never freezes.
+  * **`Normal`:** Strictly edge-triggered. The FPGA *only* captures and transfers data to DDR memory when a valid trigger event occurs.
+  * **`Single`:** Captures **one single frame** on the first trigger event and freezes the display. Re-arm by clicking **`⚡ Force / Arm`**.
+* **`Trig Edge` (`Rising` / `Falling`):** Configures whether the FPGA comparator triggers on the upward slope ($\nearrow$) or downward slope ($\searrow$).
+* **`Trig Level` (Slider & Numeric Box):** Sets the FPGA voltage threshold register (`0x08`) between $0.0\,\text{V}$ and $3.3\,\text{V}$ with client-side zero-latency linking (`widgets.jslink`).
+
+### 3. AD3 Signal Generator Controls (Rows 3 & 4)
+* **`Waveform` (`Sine`, `Triangle`, `Square`):** Selects the DAC output waveform on AD3 Wavegen Channel 1 (W1).
+* **`Amp Slider / Exact Amp`:** Adjusts the signal amplitude in Volts ($0.1\,\text{V}$ to $1.5\,\text{V}$).
+* **`Freq Slider / Exact Freq`:** Sets the generation frequency in Hertz ($100\,\text{Hz}$ to $1\,\text{MHz}$).
+
+### 4. Interactive Plotly Canvas
+* **Cyan Trace (`A0 (Analog In)`):** 1 MSPS analog signal stream read directly from DDR memory. Sample $[0]$ ($t=0\,\mu\text{s}$) is hardware-aligned to the trigger edge.
+* **Orange Dashed Trace (`Trigger Level`):** Live visual threshold line reflecting the FPGA trigger register level.
 
 ---
 
@@ -88,7 +120,7 @@ install_ad3_drivers()
 ```python
 from pynq_oscilloscope import OscilloscopeOverlay
 
-# Automatically identifies board (PYNQ-Z2), downloads v1.1.0-rc1 release, and loads FPGA
+# Automatically identifies board (PYNQ-Z2), downloads v1.1.0 release, and loads FPGA
 ol = OscilloscopeOverlay()
 
 # Launch dark-mode interactive Plotly + IPywidgets dashboard

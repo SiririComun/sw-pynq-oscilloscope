@@ -3,6 +3,7 @@ sw repository context:
 Git Commit History:
 
 ```log
+24ba5f0 - 2026-08-13 : docs(context): track CI PyPI workflow and update SW summary (SiririComun)
 14f2e56 - 2026-08-13 : docs: update README with OscilloscopeOverlay API and hardware trigger architecture (SiririComun)
 c35d0d1 - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
 f0408fe - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
@@ -16,8 +17,7 @@ dcad02d - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to elimin
 4efcf80 - 2026-08-08 : fix(ui): adjust Plotly display window scaling and pin plotly 5.x dependencies (SiririComun)
 fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching hardware tlast_generator (SiririComun)
 16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)
-be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)
-7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)```
+be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)```
 
 Files structure: 
 
@@ -27,7 +27,9 @@ Files structure:
 │   ├── generate_sw_summary.sh
 │   └── sw_summary.txt
 ├── docs
-│   └── AD3_SETUP.md
+│   ├── AD3_SETUP.md
+│   └── images
+│       └── dashboard_screenshot.png
 ├── .github
 │   └── workflows
 │       └── pypi.yml
@@ -52,7 +54,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-7 directories, 22 files
+8 directories, 23 files
 ```
 
 pypi.yml:
@@ -100,7 +102,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.1.0-rc1"
+    "version": "v1.1.0"
 }```
 
 setup.py:
@@ -116,7 +118,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.0.1",
+    version="1.1.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
