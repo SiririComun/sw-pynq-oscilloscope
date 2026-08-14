@@ -3,6 +3,7 @@ sw repository context:
 Git Commit History:
 
 ```log
+cff6d3c - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)
 24ba5f0 - 2026-08-13 : docs(context): track CI PyPI workflow and update SW summary (SiririComun)
 14f2e56 - 2026-08-13 : docs: update README with OscilloscopeOverlay API and hardware trigger architecture (SiririComun)
 c35d0d1 - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
@@ -16,8 +17,7 @@ cff0288 - 2026-08-08 : fix(deps): remove unnecessary plotlywidget from requireme
 dcad02d - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)
 4efcf80 - 2026-08-08 : fix(ui): adjust Plotly display window scaling and pin plotly 5.x dependencies (SiririComun)
 fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching hardware tlast_generator (SiririComun)
-16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)
-be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)```
+16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)```
 
 Files structure: 
 
@@ -86,16 +86,13 @@ jobs:
       - name: Install Build Tools
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build
 
       - name: Build Wheel and Source Package
         run: python -m build
 
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: python -m twine upload dist/*```
+        uses: pypa/gh-action-pypi-publish@release/v1```
 
 hardware.json:
 
