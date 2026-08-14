@@ -61,12 +61,14 @@ TARGET_FILES=(
     "pynq_oscilloscope/loader.py:python"
     "pynq_oscilloscope/notebooks.py:python"
     "pynq_oscilloscope/xadc_dma.py:python"
+    "pynq_oscilloscope/fft_dma.py:python"
     "pynq_oscilloscope/ad3_wavegen.py:python"
     "pynq_oscilloscope/hw_trigger.py:python"
     "pynq_oscilloscope/overlay.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
+    "notebooks/04_fft_spectrum_analyzer.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
