@@ -1,0 +1,1282 @@
+sw repository context:
+
+Git Commit History:
+
+```log
+855fbe4 - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)
+4545e55 - 2026-08-08 : chore(pkg): bump version to 1.0.1 (SiririComun)
+5cca09d - 2026-08-08 : docs: add PyPI badges, virtual environment tutorial, and update version to 1.0.1 (SiririComun)
+862fa4d - 2026-08-08 : chore(pkg): set distribution package name to pynq-oscilloscope (SiririComun)
+cff0288 - 2026-08-08 : fix(deps): remove unnecessary plotlywidget from requirements to fix pip install (SiririComun)
+89e4719 - 2026-08-08 : fix(deps): remove pynq from install_requires to prevent PyPI build errors on PYNQ boards (SiririComun)
+dcad02d - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)
+4efcf80 - 2026-08-08 : fix(ui): adjust Plotly display window scaling and pin plotly 5.x dependencies (SiririComun)
+fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching hardware tlast_generator (SiririComun)
+16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)
+be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)
+7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)
+9915316 - 2026-08-08 : feat(cli): add notebook installer CLI command and copy_notebooks function (SiririComun)
+2314141 - 2026-08-08 : docs: add comprehensive root README with architecture, hardware setup, and notebook guide (SiririComun)
+8669f21 - 2026-08-08 : docs(notebooks): add main 03_oscilloscope_dashboard.ipynb application notebook (SiririComun)```
+
+Files structure: 
+
+```log
+.
+├── context
+│   ├── generate_sw_summary.sh
+│   └── sw_summary.txt
+├── docs
+│   └── AD3_SETUP.md
+├── hardware.json
+├── LICENSE
+├── notebooks
+│   ├── 01_ad3_getting_started.ipynb
+│   ├── 02_xadc_getting_started.ipynb
+│   └── 03_oscilloscope_dashboard.ipynb
+├── pynq_oscilloscope
+│   ├── ad3_wavegen.py
+│   ├── dashboard.py
+│   ├── env_checker.py
+│   ├── __init__.py
+│   ├── loader.py
+│   ├── notebooks.py
+│   └── xadc_dma.py
+├── README.md
+├── requirements.txt
+└── setup.py
+
+5 directories, 18 files
+```
+
+hardware.json:
+
+```json
+{
+    "repo": "SiririComun/hw-xadc-dma-overlays",
+    "version": "v1.0.2"
+}```
+
+setup.py:
+
+```python
+import os
+from setuptools import setup, find_packages
+
+long_description = ""
+if os.path.exists("README.md"):
+    with open("README.md", "r", encoding="utf-8") as fh:
+        long_description = fh.read()
+
+setup(
+    name="pynq-oscilloscope",  # Package name for pip install
+    version="1.0.1",
+    author="Juan Pablo Sánchez (SiririComun)",
+    description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/SiririComun/sw-pynq-oscilloscope",
+    packages=find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: POSIX :: Linux",
+    ],
+    python_requires=">=3.8",
+    install_requires=[
+        "numpy>=1.19.0",
+        "plotly>=5.10.0,<6.0.0",
+        "ipywidgets>=8.0.0",
+        "pydwf>=1.1.0",
+    ],
+    package_data={
+        "pynq_oscilloscope": ["../notebooks/*.ipynb", "../hardware.json"],
+    },
+    include_package_data=True,
+    entry_points={
+        "console_scripts": [
+            "pynq-oscilloscope-get-notebooks=pynq_oscilloscope.notebooks:copy_notebooks",
+        ],
+    },
+)```
+
+requirements.txt:
+
+```text
+numpy>=1.19.0
+plotly>=5.10.0,<6.0.0
+ipywidgets>=8.0.0
+pydwf>=1.1.0```
+
+__init__.py:
+
+```python
+"""
+pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope & AD3 integration.
+"""
+
+from pynq_oscilloscope.loader import HardwareLoader
+from pynq_oscilloscope.env_checker import install_ad3_drivers, check_usb_permissions
+from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+from pynq_oscilloscope.dashboard import OscilloscopeDashboard
+from pynq_oscilloscope.notebooks import copy_notebooks
+
+__version__ = "1.0.0"
+__all__ = [
+    "HardwareLoader",
+    "install_ad3_drivers",
+    "check_usb_permissions",
+    "StreamingXADC",
+    "AD3SignalGenerator",
+    "OscilloscopeDashboard",
+    "copy_notebooks",
+]```
+
+dashboard.py:
+
+```python
+import time
+import threading
+import numpy as np
+import ipywidgets as widgets
+from IPython.display import display
+import plotly.graph_objects as go
+
+from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+
+class OscilloscopeDashboard:
+    """
+    Unified, interactive real-time Plotly + IPywidgets Oscilloscope Dashboard.
+    Integrates high-speed XADC DMA data acquisition with AD3 signal generation.
+    """
+
+    def __init__(self, overlay=None, packet_size: int = 16384, display_window: int = 1024):
+        self.overlay = overlay
+        self.packet_size = packet_size
+        self.display_window = display_window
+        
+        self._is_running = False
+        self._thread = None
+        
+        # Instantiate Hardware Drivers
+        self.ad3 = AD3SignalGenerator()
+        self.xadc = None
+        
+        # Build UI Controls & Plotly Canvas
+        self._build_ui()
+        self._build_plot()
+
+    def _build_ui(self):
+        """Construct IPywidgets Control Panel."""
+        # 1. Action Buttons
+        self.start_btn = widgets.Button(description="Start", button_style="success", icon="play")
+        self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop")
+        
+        self.start_btn.on_click(self._on_start_clicked)
+        self.stop_btn.on_click(self._on_stop_clicked)
+
+        # 2. Waveform Shape Dropdown
+        self.shape_dropdown = widgets.Dropdown(
+            options=["Sine", "Triangle", "Square"],
+            value="Sine",
+            description="Waveform:"
+        )
+
+        # 3. Frequency Controls with Zero-Latency Client-Side Link
+        self.freq_slider = widgets.IntSlider(
+            value=10000,
+            min=100,
+            max=1000000,
+            step=1,
+            description="Freq Slider:",
+            continuous_update=False,
+            layout=widgets.Layout(width="400px")
+        )
+        self.freq_input = widgets.BoundedIntText(
+            value=10000,
+            min=100,
+            max=1000000,
+            step=1,
+            description="Exact Freq:"
+        )
+        widgets.jslink((self.freq_slider, "value"), (self.freq_input, "value"))
+
+        # 4. Amplitude Controls with Zero-Latency Client-Side Link
+        self.amp_slider = widgets.FloatSlider(
+            value=1.5,
+            min=0.1,
+            max=1.5,
+            step=0.1,
+            description="Amp Slider:",
+            continuous_update=False,
+            layout=widgets.Layout(width="300px")
+        )
+        self.amp_input = widgets.BoundedFloatText(
+            value=1.5,
+            min=0.1,
+            max=1.5,
+            step=0.1,
+            description="Exact Amp:"
+        )
+        widgets.jslink((self.amp_slider, "value"), (self.amp_input, "value"))
+
+        # 5. Toggles
+        self.trigger_toggle = widgets.ToggleButton(
+            value=True,
+            description="Trigger",
+            button_style="info",
+            tooltip="Activate rising-edge software trigger (Stationary Mode)"
+        )
+        self.autorange_toggle = widgets.ToggleButton(
+            value=True,
+            description="Auto-Range",
+            button_style="info",
+            tooltip="Activate adaptive time and voltage grid scaling"
+        )
+
+        # 6. Digital Vpp Readout
+        self.readout = widgets.HTML(
+            value="<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: 0.00 V</h3>"
+        )
+
+    def _build_plot(self):
+        """Construct Plotly FigureWidget Canvas."""
+        self.fig = go.FigureWidget()
+        self.fig.add_scatter(
+            x=list(range(self.display_window)),
+            y=[0] * self.display_window,
+            mode="lines",
+            line=dict(color="#00FFCC", width=2),
+            name="A0 Channel"
+        )
+        self.fig.update_layout(
+            title="<b>Real-Time 1 MSPS DMA Oscilloscope</b>",
+            xaxis_title="Time (Microseconds)",
+            yaxis_title="Voltage (V)",
+            yaxis_range=[0, 3.5],
+            template="plotly_dark",
+            height=450,
+            margin=dict(l=40, r=20, t=50, b=40),
+            uirevision="oscilloscope_view_state"
+        )
+
+    def _on_start_clicked(self, b):
+        self.start()
+
+    def _on_stop_clicked(self, b):
+        self.stop()
+
+    def _update_loop(self):
+        """Background thread execution loop for acquisition & UI updates."""
+        try:
+            # Initialize hardware acquisition if overlay provided
+            if self.overlay and self.xadc is None:
+                self.xadc = StreamingXADC(self.overlay, default_packet_size=self.packet_size)
+
+            # Start AD3 Signal Generation
+            self.ad3.start(
+                shape=self.shape_dropdown.value,
+                frequency=float(self.freq_slider.value),
+                amplitude=float(self.amp_slider.value)
+            )
+
+            # --- SYNCHRONIZATION HANDSHAKE ---
+            # Wait for AD3 USB hardware initialization before taking the first acquisition frame
+            wait_start = time.time()
+            while self._is_running and not self.ad3.is_ready:
+                time.sleep(0.05)
+                if time.time() - wait_start > 4.0:
+                    break
+
+            # Flush initial stale frame before entering main loop
+            if self.xadc and self._is_running:
+                try:
+                    _ = self.xadc.capture(crop_startup_samples=8)
+                except Exception:
+                    pass
+
+            while self._is_running:
+                # Update AD3 parameters dynamically if changed via UI
+                self.ad3.update_parameters(
+                    shape=self.shape_dropdown.value,
+                    frequency=float(self.freq_slider.value),
+                    amplitude=float(self.amp_slider.value)
+                )
+
+                # Capture frame from XADC DMA
+                if self.xadc:
+                    voltages = self.xadc.capture(crop_startup_samples=8)
+                else:
+                    t = np.linspace(0, 0.016, self.packet_size)
+                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
+
+                # --- FEATURE 1: SOFTWARE RISING-EDGE TRIGGER ---
+                trigger_idx = 0
+                if self.trigger_toggle.value and len(voltages) > 1:
+                    threshold = 1.65
+                    crossings = np.where((voltages[:-1] <= threshold) & (voltages[1:] > threshold))[0]
+                    if len(crossings) > 0:
+                        trigger_idx = crossings[0]
+
+                # --- FEATURE 2: ADAPTIVE AXIS SCALING (AUTO-RANGE) ---
+                if self.autorange_toggle.value:
+                    freq = float(self.freq_slider.value)
+                    period_us = 1e6 / freq if freq > 0 else 1000
+                    show_samples = int(5 * period_us)
+                    show_samples = max(40, min(show_samples, self.display_window))
+                    
+                    max_idx = min(trigger_idx + show_samples, len(voltages))
+                    plot_voltages = voltages[trigger_idx : max_idx]
+                else:
+                    max_idx = min(trigger_idx + self.display_window, len(voltages))
+                    plot_voltages = voltages[trigger_idx : max_idx]
+
+                time_axis = np.arange(len(plot_voltages))
+
+                # --- ATOMIC CANVAS UPDATE ---
+                with self.fig.batch_update():
+                    self.fig.data[0].x = time_axis
+                    self.fig.data[0].y = plot_voltages
+                    if self.autorange_toggle.value:
+                        amp = float(self.amp_slider.value)
+                        margin = 0.2
+                        self.fig.layout.xaxis.range = [0, len(plot_voltages)]
+                        self.fig.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
+
+                # Update Live Vpp Readout
+                if len(voltages) > 0:
+                    vpp = np.max(voltages) - np.min(voltages)
+                    self.readout.value = f"<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
+
+                time.sleep(0.04)
+
+        except Exception as e:
+            print(f"[Dashboard] Error in update loop: {e}")
+        finally:
+            self._is_running = False
+            self.ad3.stop()
+            if self.xadc:
+                self.xadc.close()
+                self.xadc = None
+            print("[Dashboard] Stopped cleanly.")
+
+    def start(self):
+        """Launch dashboard execution in background thread."""
+        if self._is_running:
+            print("[Dashboard] Dashboard is already running.")
+            return
+
+        self._is_running = True
+        self._thread = threading.Thread(target=self._update_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Halt dashboard background updates."""
+        self._is_running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
+    def display(self):
+        """Render the complete UI Dashboard in Jupyter."""
+        row1 = widgets.HBox([self.start_btn, self.stop_btn, self.trigger_toggle, self.autorange_toggle, self.readout])
+        row2 = widgets.HBox([self.shape_dropdown, self.amp_slider, self.amp_input])
+        row3 = widgets.HBox([self.freq_slider, self.freq_input])
+        
+        ui_layout = widgets.VBox([row1, row2, row3, self.fig])
+        display(ui_layout)```
+
+env_checker.py:
+
+```python
+import os
+import sys
+import platform
+import subprocess
+import urllib.request
+from pathlib import Path
+
+class EnvironmentManager:
+    """
+    Architecture-aware manager for Digilent AD3 WaveForms drivers,
+    dependencies, and USB bus permissions on Linux (armhf / aarch64).
+    """
+
+    # Driver download URLs by CPU architecture
+    DRIVERS = {
+        "32bit": {
+            "adept_url": "https://files.digilent.com/Software/Adept2%20Runtime/2.27.9/digilent.adept.runtime_2.27.9-armhf.deb",
+            "adept_file": "digilent.adept.runtime_2.27.9-armhf.deb",
+            "waveforms_url": "https://files.digilent.com/Software/Waveforms/3.25.1/digilent.waveforms_qt5_3.25.1_armhf.deb",
+            "waveforms_file": "digilent.waveforms_armhf.deb"
+        },
+        "64bit": {
+            "adept_url": "https://files.digilent.com/Software/Adept2%20Runtime/2.27.9/digilent.adept.runtime_2.27.9-arm64.deb",
+            "adept_file": "digilent.adept.runtime_2.27.9-arm64.deb",
+            "waveforms_url": "https://files.digilent.com/Software/Waveforms/3.25.1/digilent.waveforms_qt5_3.25.1_arm64.deb",
+            "waveforms_file": "digilent.waveforms_arm64.deb"
+        }
+    }
+
+    @classmethod
+    def get_architecture(cls) -> str:
+        """Detect CPU architecture: '32bit' for armv7l (Zynq-7000), '64bit' for aarch64 (UltraScale+)."""
+        machine = platform.machine().lower()
+        if "aarch64" in machine or "arm64" in machine:
+            return "64bit"
+        return "32bit"
+
+    @classmethod
+    def grant_usb_permissions(cls) -> bool:
+        """Grant the running user/Jupyter process permissions to access the USB bus."""
+        print("[EnvManager] Setting USB bus permissions (/dev/bus/usb)...")
+        try:
+            subprocess.run(["sudo", "chmod", "-R", "777", "/dev/bus/usb/"], check=True)
+            print("[EnvManager] USB permissions successfully granted.")
+            return True
+        except Exception as e:
+            print(f"[EnvManager] Warning: Could not set USB permissions automatically: {e}")
+            return False
+
+    @classmethod
+    def install_ad3_drivers(cls, download_dir: str = "/tmp/digilent_drivers") -> bool:
+        """
+        Detects system architecture, downloads Digilent Adept + WaveForms .deb packages,
+        installs them via dpkg/apt-get, and sets USB permissions.
+        """
+        arch = cls.get_architecture()
+        driver_info = cls.DRIVERS[arch]
+        
+        target_dir = Path(download_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        adept_path = target_dir / driver_info["adept_file"]
+        wf_path = target_dir / driver_info["waveforms_file"]
+
+        print(f"[EnvManager] Detected CPU architecture: '{platform.machine()}' ({arch})")
+        print("[EnvManager] Downloading Digilent Adept Runtime and WaveForms packages...")
+        
+        try:
+            if not adept_path.exists():
+                urllib.request.urlretrieve(driver_info["adept_url"], adept_path)
+            if not wf_path.exists():
+                urllib.request.urlretrieve(driver_info["waveforms_url"], wf_path)
+                
+            print("[EnvManager] Installing Debian packages via dpkg...")
+            subprocess.run(["sudo", "dpkg", "-i", str(adept_path)], check=False)
+            subprocess.run(["sudo", "dpkg", "-i", str(wf_path)], check=False)
+            
+            print("[EnvManager] Resolving missing dependencies via apt-get...")
+            subprocess.run(["sudo", "apt-get", "install", "-f", "-y"], check=True)
+            
+            cls.grant_usb_permissions()
+            print("\n=== DIGILENT AD3 DRIVER INSTALLATION COMPLETE ===")
+            return True
+            
+        except Exception as e:
+            print(f"[EnvManager] Error during driver installation: {e}")
+            return False
+
+def install_ad3_drivers():
+    """Convenience top-level function."""
+    return EnvironmentManager.install_ad3_drivers()
+
+def check_usb_permissions():
+    """Convenience top-level function."""
+    return EnvironmentManager.grant_usb_permissions()```
+
+loader.py:
+
+```python
+import os
+import json
+import urllib.request
+from pathlib import Path
+from pynq import Overlay
+
+class HardwareLoader:
+    """
+    Smart Overlay Loader that detects the target board and pulls matching
+    .bit and .hwh release binaries from GitHub Releases API based on hardware.json.
+    """
+    
+    @staticmethod
+    def get_project_root() -> Path:
+        """Find the root directory of the package where hardware.json lives."""
+        return Path(__file__).resolve().parent.parent
+
+    @classmethod
+    def get_hardware_config(cls) -> dict:
+        """Load hardware pinning configuration from hardware.json."""
+        config_path = cls.get_project_root() / "hardware.json"
+        if not config_path.exists():
+            return {
+                "repo": "SiririComun/hw-xadc-dma-overlays",
+                "version": "v1.0.2"
+            }
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def get_board_name() -> str:
+        """
+        Detect active board running PYNQ across all PYNQ OS versions (v2.x, v3.x).
+        Normalizes 'PYNQ-Z2' -> 'pynq_z2', 'ZedBoard' -> 'zedboard', etc.
+        """
+        # 1. Check environment variable set by PYNQ OS ($BOARD)
+        board_env = os.environ.get("BOARD")
+        if board_env:
+            return board_env.lower().replace("-", "_")
+
+        # 2. Check /etc/board.name if on PYNQ Linux
+        try:
+            if os.path.exists("/etc/board.name"):
+                with open("/etc/board.name", "r", encoding="utf-8") as f:
+                    return f.read().strip().lower().replace("-", "_")
+        except Exception:
+            pass
+
+        # 3. Try pynq.Device active device name
+        try:
+            from pynq import Device
+            if Device.active_device and Device.active_device.name:
+                return Device.active_device.name.lower().replace("-", "_")
+        except Exception:
+            pass
+
+        # Fallback default for PYNQ-Z2
+        return "pynq_z2"
+
+    @classmethod
+    def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
+        """
+        Detects the host board, fetches matching compiled .bit and .hwh files
+        from GitHub Releases if missing, and loads the Overlay into the FPGA fabric.
+        """
+        config = cls.get_hardware_config()
+        repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
+        target_version = version or config.get("version", "v1.0.2")
+        
+        board_name = cls.get_board_name()
+        bit_filename = f"{board_name}.bit"
+        hwh_filename = f"{board_name}.hwh"
+        
+        # Determine cache location
+        if download_dir is None:
+            download_dir = Path.home() / ".cache" / "pynq_oscilloscope" / target_version
+        else:
+            download_dir = Path(download_dir)
+            
+        download_dir.mkdir(parents=True, exist_ok=True)
+        
+        local_bit = download_dir / bit_filename
+        local_hwh = download_dir / hwh_filename
+        
+        # Base release URL on GitHub
+        base_url = f"https://github.com/{repo}/releases/download/{target_version}/"
+        url_bit = f"{base_url}{bit_filename}"
+        url_hwh = f"{base_url}{hwh_filename}"
+        
+        # Download files if they do not exist locally
+        if not local_bit.exists() or not local_hwh.exists():
+            print(f"[HardwareLoader] Detected target board: '{board_name}'")
+            print(f"[HardwareLoader] Downloading overlay '{target_version}' from {repo}...")
+            
+            try:
+                urllib.request.urlretrieve(url_bit, local_bit)
+                urllib.request.urlretrieve(url_hwh, local_hwh)
+                print("[HardwareLoader] Overlay assets downloaded successfully.")
+            except Exception as e:
+                print(f"[HardwareLoader] Error downloading release binaries: {e}")
+                raise RuntimeError(
+                    f"Could not download {bit_filename} from {base_url}. "
+                    "Ensure the board has internet access and the hardware release exists."
+                ) from e
+                
+        print(f"[HardwareLoader] Loading overlay into FPGA fabric: {local_bit}")
+        return Overlay(str(local_bit))```
+
+notebooks.py:
+
+```python
+import os
+import shutil
+import sys
+from pathlib import Path
+
+def copy_notebooks(target_dir: str = None):
+    """
+    Copies pynq_oscilloscope example notebooks into the Jupyter root folder
+    under a dedicated 'pynq_oscilloscope/' subfolder.
+    """
+    # 1. Locate package internal notebooks directory
+    package_dir = Path(__file__).resolve().parent.parent
+    src_notebooks = package_dir / "notebooks"
+
+    if not src_notebooks.exists():
+        # Fallback if installed via site-packages
+        src_notebooks = Path(__file__).resolve().parent / "notebooks_data"
+
+    # 2. Determine Jupyter root target directory
+    if target_dir is None:
+        pynq_jupyter_root = Path("/home/xilinx/jupyter_notebooks")
+        if pynq_jupyter_root.exists():
+            dest_dir = pynq_jupyter_root / "pynq_oscilloscope"
+        else:
+            dest_dir = Path.cwd() / "pynq_oscilloscope_notebooks"
+    else:
+        dest_dir = Path(target_dir)
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # 3. Copy notebook files
+    copied_files = []
+    for item in src_notebooks.glob("*.ipynb"):
+        dest_file = dest_dir / item.name
+        shutil.copy2(item, dest_file)
+        copied_files.append(item.name)
+
+    print(f"[NotebookInstaller] Successfully copied {len(copied_files)} notebooks to:")
+    print(f"                   {dest_dir.resolve()}")
+    for f in copied_files:
+        print(f"  • {f}")
+
+if __name__ == "__main__":
+    copy_notebooks()```
+
+xadc_dma.py:
+
+```python
+import numpy as np
+from pynq import allocate
+
+class StreamingXADC:
+    """
+    High-level driver for 1 MSPS XADC AXI-Stream & AXI DMA data acquisition.
+    Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
+    """
+
+    def __init__(self, overlay, default_packet_size: int = 16384):
+        """
+        Initialize the DMA controller from the loaded PYNQ overlay.
+        Default packet size is set to 16384 to match the hardware tlast_generator.
+        """
+        # Address-agnostic binding via PYNQ IP dictionary (.hwh metadata)
+        if hasattr(overlay, "axi_dma_0"):
+            self.dma = overlay.axi_dma_0
+        else:
+            # Fallback search in IP dict for any DMA block
+            dma_blocks = [ip for ip, details in overlay.ip_dict.items() if "dma" in ip.lower()]
+            if not dma_blocks:
+                raise RuntimeError("No AXI DMA block found in the loaded hardware overlay.")
+            self.dma = getattr(overlay, dma_blocks[0])
+
+        self.packet_size = default_packet_size
+        # Allocate contiguous CMA buffer ONCE outside the capture loop to prevent memory fragmentation
+        self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
+
+    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
+        """
+        Triggers a high-speed hardware DMA transfer (S2MM channel),
+        waits for completion, scales the raw 12-bit values to 0.0V - 3.3V,
+        and returns a NumPy array of voltages.
+        """
+        # 1. Command DMA to write incoming stream into allocated physical RAM
+        self.dma.recvchannel.transfer(self._buffer)
+        
+        # 2. Block until hardware transfer completes (asserted by TLAST generator at sample 16384)
+        self.dma.recvchannel.wait()
+        
+        # 3. Cast buffer to NumPy array
+        raw_samples = np.array(self._buffer)
+        
+        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V range
+        voltages = (raw_samples >> 4) * (3.3 / 4095.0)
+        
+        # 5. Crop initial stale FIFO samples if requested
+        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
+            voltages = voltages[crop_startup_samples:]
+            
+        return voltages
+
+    def close(self):
+        """Free contiguous memory allocation (CMA) buffer."""
+        if hasattr(self, "_buffer") and self._buffer is not None:
+            try:
+                self._buffer.close()
+                self._buffer = None
+            except Exception:
+                pass
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()```
+
+ad3_wavegen.py:
+
+```python
+import time
+import threading
+from typing import Optional
+from pydwf import DwfLibrary, DwfAnalogOutFunction, DwfAnalogOutNode
+from pydwf.utilities import openDwfDevice
+
+class AD3SignalGenerator:
+    """
+    High-level, non-blocking multi-threaded wrapper for Digilent Analog Discovery 3 (AD3) Wavegen.
+    Executes physical signal generation in a background thread to keep Jupyter kernels responsive.
+    """
+
+    WAVEFORM_MAP = {
+        "Sine": DwfAnalogOutFunction.Sine,
+        "Square": DwfAnalogOutFunction.Square,
+        "Triangle": DwfAnalogOutFunction.Triangle
+    }
+
+    def __init__(self):
+        self.dwf = DwfLibrary()
+        self.is_running = False
+        self.is_ready = False
+        self._thread: Optional[threading.Thread] = None
+        self._device_handle = None
+        
+        # Target state parameters
+        self.shape_name = "Sine"
+        self.frequency = 10000.0  # 10 kHz
+        self.amplitude = 1.5      # 1.5V
+        self.offset = 1.65        # 1.65V
+        self.channel = 0          # Channel 1 (W1)
+
+    def _worker(self):
+        """Background thread execution loop."""
+        try:
+            self._device_handle = openDwfDevice(self.dwf)
+            wavegen = self._device_handle.analogOut
+            
+            # Initial configuration
+            func_enum = self.WAVEFORM_MAP.get(self.shape_name, DwfAnalogOutFunction.Sine)
+            wavegen.nodeEnableSet(self.channel, DwfAnalogOutNode.Carrier, True)
+            wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
+            wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, self.frequency)
+            wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, self.amplitude)
+            wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, self.offset)
+            
+            wavegen.configure(self.channel, True)
+            self.is_ready = True
+            print("[AD3] Wavegen initialized and signal active.")
+            
+            prev_shape = self.shape_name
+            prev_freq = self.frequency
+            prev_amp = self.amplitude
+            prev_offset = self.offset
+            
+            while self.is_running:
+                # Track shape changes
+                if self.shape_name != prev_shape:
+                    prev_shape = self.shape_name
+                    func_enum = self.WAVEFORM_MAP.get(prev_shape, DwfAnalogOutFunction.Sine)
+                    wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
+                    wavegen.configure(self.channel, True)
+                    
+                # Track frequency changes
+                if self.frequency != prev_freq:
+                    prev_freq = self.frequency
+                    wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, prev_freq)
+                    wavegen.configure(self.channel, True)
+                    
+                # Track amplitude changes
+                if self.amplitude != prev_amp:
+                    prev_amp = self.amplitude
+                    wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, prev_amp)
+                    wavegen.configure(self.channel, True)
+
+                # Track offset changes (FIXED!)
+                if self.offset != prev_offset:
+                    prev_offset = self.offset
+                    wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, prev_offset)
+                    wavegen.configure(self.channel, True)
+                    
+                time.sleep(0.05)
+                
+            self.is_ready = False
+            wavegen.configure(self.channel, False)
+            if self._device_handle:
+                self._device_handle.close()
+                self._device_handle = None
+            print("[AD3] Wavegen stopped and hardware handle released.")
+            
+        except Exception as e:
+            print(f"[AD3] Error in background wavegen thread: {e}")
+            self.is_ready = False
+            self.is_running = False
+
+    def start(self, shape: str = "Sine", frequency: float = 10000.0, amplitude: float = 1.5, offset: float = 1.65):
+        if self.is_running:
+            print("[AD3] Wavegen is already running.")
+            return
+
+        self.is_ready = False
+        self.shape_name = shape
+        self.frequency = float(frequency)
+        self.amplitude = float(amplitude)
+        self.offset = float(offset)
+        self.is_running = True
+        
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Dynamically update parameters (including DC offset) while active."""
+        if shape is not None and shape in self.WAVEFORM_MAP:
+            self.shape_name = shape
+        if frequency is not None:
+            self.frequency = float(frequency)
+        if amplitude is not None:
+            self.amplitude = float(amplitude)
+        if offset is not None:
+            self.offset = float(offset)
+
+    def stop(self):
+        self.is_ready = False
+        if self.is_running:
+            self.is_running = False
+            if self._thread and self._thread.is_alive():
+                self._thread.join(timeout=2.0)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()```
+
+01_ad3_getting_started.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 1: Analog Discovery 3 (AD3) Getting Started Guide\n",
+    "\n",
+    "This notebook demonstrates how to verify Digilent WaveForms drivers and programmatically generate analog waveforms using the **`AD3SignalGenerator`** class from `pynq_oscilloscope`."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Environment Verification & USB Permissions\n",
+    "Ensure USB permissions are granted to the Jupyter process to allow communication with the AD3 hardware."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, install_ad3_drivers\n",
+    "\n",
+    "# Ensure USB permissions are granted\n",
+    "check_usb_permissions()\n",
+    "\n",
+    "# Uncomment to install drivers if running on a fresh board:\n",
+    "# install_ad3_drivers()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Hardware Connection Verification\n",
+    "Test physical connectivity with the Analog Discovery 3."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pydwf import DwfLibrary\n",
+    "from pydwf.utilities import openDwfDevice\n",
+    "\n",
+    "dwf = DwfLibrary()\n",
+    "try:\n",
+    "    with openDwfDevice(dwf) as device:\n",
+    "        print(\"=====================================================\")\n",
+    "        print(\" SUCCESS: Analog Discovery 3 is connected!\")\n",
+    "        print(\"=====================================================\")\n",
+    "except Exception as e:\n",
+    "    print(f\"CONNECTION FAILED: {e}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Non-Blocking Waveform Generation\n",
+    "Using `AD3SignalGenerator`, we launch signal generation in a background worker thread. This keeps the Jupyter kernel responsive for subsequent cells."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import time\n",
+    "from pynq_oscilloscope import AD3SignalGenerator\n",
+    "\n",
+    "# Instantiate high-level signal generator\n",
+    "wavegen = AD3SignalGenerator()\n",
+    "\n",
+    "# Start generating a 10 kHz Sine wave (1.5V amplitude, 1.65V offset)\n",
+    "wavegen.start(shape=\"Sine\", frequency=10000.0, amplitude=1.5, offset=1.65)\n",
+    "\n",
+    "time.sleep(2.0)\n",
+    "\n",
+    "# Dynamically update to a 25 kHz Square wave\n",
+    "print(\"Updating signal to 25 kHz Square wave...\")\n",
+    "wavegen.update_parameters(shape=\"Square\", frequency=25000.0, amplitude=1.2)\n",
+    "\n",
+    "time.sleep(2.0)\n",
+    "\n",
+    "# Clean hardware shutdown\n",
+    "wavegen.stop()\n",
+    "print(\"Wavegen stopped cleanly.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
+02_xadc_getting_started.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 2: Standalone High-Speed XADC DMA Acquisition\n",
+    "\n",
+    "This notebook demonstrates how to automatically load the hardware overlay from GitHub Releases using **`HardwareLoader`** and perform high-speed 1 MSPS analog acquisition using **`StreamingXADC`**."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Automatic Hardware Overlay Loading\n",
+    "We use `HardwareLoader.load_overlay()` to detect our board (PYNQ-Z2) and automatically fetch the matching `pynq_z2.bit` and `pynq_z2.hwh` files from GitHub Releases (`v1.0.2`)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import HardwareLoader\n",
+    "\n",
+    "# Auto-detect board and load pinned v1.0.2 overlay\n",
+    "overlay = HardwareLoader.load_overlay()\n",
+    "print(\"Hardware overlay loaded successfully!\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. High-Speed 1 MSPS DMA Capture\n",
+    "Using `StreamingXADC`, we instantiate a contiguous memory buffer (CMA) and trigger a 1024-sample DMA transfer from the XADC block."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import StreamingXADC\n",
+    "\n",
+    "# Instantiate streaming XADC driver with 16384 packet size matching hardware\n",
+    "xadc = StreamingXADC(overlay, default_packet_size=16384)\n",
+    "\n",
+    "# Capture 16,384 samples (16.384 milliseconds of 1 MSPS data)\n",
+    "voltages = xadc.capture(crop_startup_samples=8)\n",
+    "print(f\"Captured {len(voltages)} samples successfully!\")\n",
+    "print(f\"Sample Voltage Range: Min = {voltages.min():.2f} V, Max = {voltages.max():.2f} V\")\n",
+    "\n",
+    "# Close buffer\n",
+    "xadc.close()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Waveform Visualization with Matplotlib\n",
+    "Plot the captured high-speed 1 MSPS waveform."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "# Render high-quality waveform plot\n",
+    "fig, ax = plt.subplots(figsize=(10, 4.5), dpi=100)\n",
+    "ax.plot(voltages, color=\"#2B6CB0\", linewidth=1.8, label=\"A0 Channel (XADC)\")\n",
+    "\n",
+    "ax.set_title(\"Hardware-Driven 1 MSPS XADC Stream Capture\", fontsize=12, fontweight=\"bold\")\n",
+    "ax.set_xlabel(\"Time (Microseconds)\", fontsize=10)\n",
+    "ax.set_ylabel(\"Measured Voltage (V)\", fontsize=10)\n",
+    "ax.set_ylim(0, 3.5)\n",
+    "ax.set_xlim(0, len(voltages))\n",
+    "ax.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "ax.legend(loc=\"upper right\")\n",
+    "\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
+03_oscilloscope_dashboard.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 3: Real-Time Interactive Oscilloscope Dashboard\n",
+    "\n",
+    "This notebook deploys the main interactive closed-loop **Oscilloscope Dashboard** using `pynq_oscilloscope`.\n",
+    "\n",
+    "### Features:\n",
+    "- **Real-time 1 MSPS DMA Acquisition** (XADC via AXI DMA)\n",
+    "- **Non-blocking Waveform Generation** (Analog Discovery 3 via `pydwf` background thread)\n",
+    "- **Interactive Dark-Mode Plotly UI** with `uirevision` viewport locks\n",
+    "- **Zero-Latency Client-Side Controls** using `widgets.jslink()`\n",
+    "- **Software Rising-Edge Trigger** (Stationary Waveform Mode)\n",
+    "- **Adaptive Axis Auto-Ranging** & Live $V_{pp}$ Readout"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. System & USB Permission Verification\n",
+    "Ensure USB permissions are granted so Jupyter can communicate with the Analog Discovery 3."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions\n",
+    "\n",
+    "# Set permissions for /dev/bus/usb\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Automatic Hardware Overlay Loading\n",
+    "Fetch and load the pinned hardware overlay (`v1.0.2`) from GitHub Releases."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import HardwareLoader\n",
+    "\n",
+    "# Auto-detect board model and load target overlay\n",
+    "overlay = HardwareLoader.load_overlay()\n",
+    "print(\"Hardware overlay loaded successfully!\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Deploy Interactive Oscilloscope Dashboard\n",
+    "Instantiate the high-level dashboard and display the UI controls and live Plotly canvas."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import OscilloscopeDashboard\n",
+    "\n",
+    "# Instantiate the Dashboard\n",
+    "app = OscilloscopeDashboard(overlay=overlay)\n",
+    "\n",
+    "# Display UI Layout & Plotly Canvas\n",
+    "app.display()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Hardware Shutdown & Cleanup\n",
+    "Run this cell or click **Stop** on the dashboard to safely disconnect the Analog Discovery 3 and release the DMA memory buffer."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Halt background update loop and release hardware handles\n",
+    "app.stop()\n",
+    "print(\"Oscilloscope dashboard stopped cleanly.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
+generate_sw_summary.sh:
+
+```bash
+#!/usr/bin/env bash
+# ==============================================================================
+# Script: context/generate_sw_summary.sh
+# Target: sw-pynq-oscilloscope
+# Purpose: Dump Git history, structure, SW files, and notebook JSON into context/sw_summary.txt
+# ==============================================================================
+
+# Dynamically resolve paths
+CONTEXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${CONTEXT_DIR}/.." && pwd)"
+OUTPUT_FILE="${CONTEXT_DIR}/sw_summary.txt"
+
+echo "Generating concise SW summary into: ${OUTPUT_FILE}..."
+> "${OUTPUT_FILE}"
+
+cd "${REPO_ROOT}" || exit 1
+
+# 1. Header & Git Commit History
+cat << 'EOF' >> "${OUTPUT_FILE}"
+sw repository context:
+
+Git Commit History:
+
+```log
+EOF
+
+if command -v git &> /dev/null && git rev-parse --is-inside-work-tree &> /dev/null; then
+    git log --pretty=format:"%h - %cd : %s (%an)" --date=short -n 15 >> "${OUTPUT_FILE}"
+fi
+
+cat << 'EOF' >> "${OUTPUT_FILE}"
+```
+
+Files structure: 
+
+```log
+EOF
+
+# 2. Directory Tree
+if command -v tree &> /dev/null; then
+    tree -I '.git|__pycache__|*.egg-info|.pytest_cache|venv|env|dist|build|.ipynb_checkpoints' >> "${OUTPUT_FILE}"
+fi
+
+cat << 'EOF' >> "${OUTPUT_FILE}"
+```
+
+EOF
+
+# 3. Exact list of targeted files and their markdown syntax
+TARGET_FILES=(
+    "hardware.json:json"
+    "setup.py:python"
+    "requirements.txt:text"
+    "pynq_oscilloscope/__init__.py:python"
+    "pynq_oscilloscope/dashboard.py:python"
+    "pynq_oscilloscope/env_checker.py:python"
+    "pynq_oscilloscope/loader.py:python"
+    "pynq_oscilloscope/notebooks.py:python"
+    "pynq_oscilloscope/xadc_dma.py:python"
+    "pynq_oscilloscope/ad3_wavegen.py:python"
+    "notebooks/01_ad3_getting_started.ipynb:json"
+    "notebooks/02_xadc_getting_started.ipynb:json"
+    "notebooks/03_oscilloscope_dashboard.ipynb:json"
+    "context/generate_sw_summary.sh:bash"
+)
+
+# 4. Append each file
+for item in "${TARGET_FILES[@]}"; do
+    filepath="${item%%:*}"
+    syntax="${item##*:}"
+    filename=$(basename "$filepath")
+
+    if [ -f "$filepath" ]; then
+        echo "Adding: ${filepath}"
+        {
+            echo "${filename}:"
+            echo ""
+            echo "\`\`\`${syntax}"
+            cat "${filepath}"
+            echo "\`\`\`"
+            echo ""
+        } >> "${OUTPUT_FILE}"
+    else
+        echo "Warning: File not found -> ${filepath}"
+    fi
+done
+
+echo "Done! SW context generated in: ${OUTPUT_FILE}"```
+
