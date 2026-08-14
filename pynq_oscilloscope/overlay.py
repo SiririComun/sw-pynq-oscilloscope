@@ -25,7 +25,7 @@ class OscilloscopeOverlay(Overlay):
         self,
         bitfile_name: Optional[Union[str, Path]] = None,
         version: Optional[str] = None,
-        packet_size: int = 16384,
+        packet_size: int = 2048,
         fft_points: int = 2048,
         **kwargs
     ):

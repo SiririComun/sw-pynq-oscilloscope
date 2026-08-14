@@ -4,11 +4,12 @@ Git Context & Branch Info:
 Current Branch: feat/pl-fft
 Branch Tracking Status:
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-fft     1dc5fea [origin/feat/pl-fft] feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard
+* feat/pl-fft     1a24002 [origin/feat/pl-fft] fix(dma): resolve broadcaster deadlock with synchronized dual DMA transfer
   main            3aae7b1 [origin/main] docs(context): capture branch status and commit graph in SW context summary
 
 Git Commit Graph & History:
-* 1dc5fea  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
+* 1a24002  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-14 : fix(dma): resolve broadcaster deadlock with synchronized dual DMA transfer (SiririComun)
+* 1dc5fea  - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
 * 3aae7b1  (origin/main, origin/HEAD, main) - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
 * 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
 * cff6d3c  (origin/feat/hw-trigger, feat/hw-trigger) - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)
@@ -21,8 +22,7 @@ Git Commit Graph & History:
 * 5cca09d  - 2026-08-08 : docs: add PyPI badges, virtual environment tutorial, and update version to 1.0.1 (SiririComun)
 * 862fa4d  - 2026-08-08 : chore(pkg): set distribution package name to pynq-oscilloscope (SiririComun)
 * cff0288  - 2026-08-08 : fix(deps): remove unnecessary plotlywidget from requirements to fix pip install (SiririComun)
-* 89e4719  - 2026-08-08 : fix(deps): remove pynq from install_requires to prevent PyPI build errors on PYNQ boards (SiririComun)
-* dcad02d  - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)```
+* 89e4719  - 2026-08-08 : fix(deps): remove pynq from install_requires to prevent PyPI build errors on PYNQ boards (SiririComun)```
 
 Files structure: 
 
@@ -906,7 +906,7 @@ class StreamingXADC:
     Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
     """
 
-    def __init__(self, overlay, default_packet_size: int = 16384):
+    def __init__(self, overlay, default_packet_size: int = 2048):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
         Default packet size is set to 16,384 to match the hardware packetizer.
@@ -1464,7 +1464,7 @@ class OscilloscopeOverlay(Overlay):
         self,
         bitfile_name: Optional[Union[str, Path]] = None,
         version: Optional[str] = None,
-        packet_size: int = 16384,
+        packet_size: int = 2048,
         fft_points: int = 2048,
         **kwargs
     ):

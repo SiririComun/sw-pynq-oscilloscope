@@ -7,7 +7,7 @@ class StreamingXADC:
     Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
     """
 
-    def __init__(self, overlay, default_packet_size: int = 16384):
+    def __init__(self, overlay, default_packet_size: int = 2048):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
         Default packet size is set to 16,384 to match the hardware packetizer.
