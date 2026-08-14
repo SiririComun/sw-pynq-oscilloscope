@@ -15,17 +15,20 @@ echo "Generating concise SW summary into: ${OUTPUT_FILE}..."
 
 cd "${REPO_ROOT}" || exit 1
 
-# 1. Header & Git Commit History
+# 1. Header, Branch Status & Git History
 cat << 'EOF' >> "${OUTPUT_FILE}"
-sw repository context:
-
-Git Commit History:
+Git Context & Branch Info:
 
 ```log
 EOF
 
 if command -v git &> /dev/null && git rev-parse --is-inside-work-tree &> /dev/null; then
-    git log --pretty=format:"%h - %cd : %s (%an)" --date=short -n 15 >> "${OUTPUT_FILE}"
+    echo "Current Branch: $(git branch --show-current)" >> "${OUTPUT_FILE}"
+    echo "Branch Tracking Status:" >> "${OUTPUT_FILE}"
+    git branch -vv >> "${OUTPUT_FILE}"
+    echo "" >> "${OUTPUT_FILE}"
+    echo "Git Commit Graph & History:" >> "${OUTPUT_FILE}"
+    git log --graph --pretty=format:"%h %d - %cd : %s (%an)" --date=short -n 15 >> "${OUTPUT_FILE}"
 fi
 
 cat << 'EOF' >> "${OUTPUT_FILE}"
