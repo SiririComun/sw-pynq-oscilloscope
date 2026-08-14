@@ -38,7 +38,7 @@ EOF
 
 # 2. Directory Tree
 if command -v tree &> /dev/null; then
-    tree -I '.git|__pycache__|*.egg-info|.pytest_cache|venv|env|dist|build|.ipynb_checkpoints' >> "${OUTPUT_FILE}"
+    tree -a -I '.git|__pycache__|*.egg-info|.pytest_cache|venv|env|dist|build|.ipynb_checkpoints' >> "${OUTPUT_FILE}"
 fi
 
 cat << 'EOF' >> "${OUTPUT_FILE}"
@@ -48,6 +48,7 @@ EOF
 
 # 3. Exact list of targeted files and their markdown syntax
 TARGET_FILES=(
+    ".github/workflows/pypi.yml:yaml"
     "hardware.json:json"
     "setup.py:python"
     "requirements.txt:text"

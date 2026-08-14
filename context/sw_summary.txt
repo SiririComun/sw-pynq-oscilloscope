@@ -3,6 +3,7 @@ sw repository context:
 Git Commit History:
 
 ```log
+14f2e56 - 2026-08-13 : docs: update README with OscilloscopeOverlay API and hardware trigger architecture (SiririComun)
 c35d0d1 - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
 f0408fe - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
 855fbe4 - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)
@@ -16,8 +17,7 @@ dcad02d - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to elimin
 fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching hardware tlast_generator (SiririComun)
 16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)
 be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)
-7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)
-9915316 - 2026-08-08 : feat(cli): add notebook installer CLI command and copy_notebooks function (SiririComun)```
+7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)```
 
 Files structure: 
 
@@ -28,6 +28,10 @@ Files structure:
 │   └── sw_summary.txt
 ├── docs
 │   └── AD3_SETUP.md
+├── .github
+│   └── workflows
+│       └── pypi.yml
+├── .gitignore
 ├── hardware.json
 ├── LICENSE
 ├── notebooks
@@ -48,8 +52,48 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-5 directories, 20 files
+7 directories, 22 files
 ```
+
+pypi.yml:
+
+```yaml
+name: Publish Package to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  pypi-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Mandatory for PyPI Trusted Publishing
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Build Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build Wheel and Source Package
+        run: python -m build
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: python -m twine upload dist/*```
 
 hardware.json:
 
@@ -1536,7 +1580,7 @@ EOF
 
 # 2. Directory Tree
 if command -v tree &> /dev/null; then
-    tree -I '.git|__pycache__|*.egg-info|.pytest_cache|venv|env|dist|build|.ipynb_checkpoints' >> "${OUTPUT_FILE}"
+    tree -a -I '.git|__pycache__|*.egg-info|.pytest_cache|venv|env|dist|build|.ipynb_checkpoints' >> "${OUTPUT_FILE}"
 fi
 
 cat << 'EOF' >> "${OUTPUT_FILE}"
@@ -1546,6 +1590,7 @@ EOF
 
 # 3. Exact list of targeted files and their markdown syntax
 TARGET_FILES=(
+    ".github/workflows/pypi.yml:yaml"
     "hardware.json:json"
     "setup.py:python"
     "requirements.txt:text"
