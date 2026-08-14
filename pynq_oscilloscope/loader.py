@@ -22,7 +22,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.0.2"
+                "version": "v1.1.0-rc1"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -58,20 +58,19 @@ class HardwareLoader:
         return "pynq_z2"
 
     @classmethod
-    def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
+    def get_overlay_path(cls, version: str = None, download_dir: str = None) -> Path:
         """
-        Detects the host board, fetches matching compiled .bit and .hwh files
-        from GitHub Releases if missing, and loads the Overlay into the FPGA fabric.
+        Detects host board, downloads matching .bit and .hwh if missing,
+        and returns the local Path to the .bit file.
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.0.2")
+        target_version = version or config.get("version", "v1.1.0-rc1")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
         hwh_filename = f"{board_name}.hwh"
         
-        # Determine cache location
         if download_dir is None:
             download_dir = Path.home() / ".cache" / "pynq_oscilloscope" / target_version
         else:
@@ -82,26 +81,27 @@ class HardwareLoader:
         local_bit = download_dir / bit_filename
         local_hwh = download_dir / hwh_filename
         
-        # Base release URL on GitHub
         base_url = f"https://github.com/{repo}/releases/download/{target_version}/"
         url_bit = f"{base_url}{bit_filename}"
         url_hwh = f"{base_url}{hwh_filename}"
         
-        # Download files if they do not exist locally
         if not local_bit.exists() or not local_hwh.exists():
-            print(f"[HardwareLoader] Detected target board: '{board_name}'")
-            print(f"[HardwareLoader] Downloading overlay '{target_version}' from {repo}...")
-            
+            print(f"[HardwareLoader] Target board: '{board_name}'")
+            print(f"[HardwareLoader] Fetching overlay '{target_version}' from {repo}...")
             try:
                 urllib.request.urlretrieve(url_bit, local_bit)
                 urllib.request.urlretrieve(url_hwh, local_hwh)
-                print("[HardwareLoader] Overlay assets downloaded successfully.")
+                print("[HardwareLoader] Bitstream and handoff metadata downloaded.")
             except Exception as e:
-                print(f"[HardwareLoader] Error downloading release binaries: {e}")
                 raise RuntimeError(
-                    f"Could not download {bit_filename} from {base_url}. "
-                    "Ensure the board has internet access and the hardware release exists."
+                    f"Could not download {bit_filename} from {base_url}. Check internet connection."
                 ) from e
                 
-        print(f"[HardwareLoader] Loading overlay into FPGA fabric: {local_bit}")
-        return Overlay(str(local_bit))
+        return local_bit
+
+    @classmethod
+    def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
+        """Backwards-compatible helper to load Overlay directly."""
+        bit_path = cls.get_overlay_path(version, download_dir)
+        print(f"[HardwareLoader] Loading overlay: {bit_path}")
+        return Overlay(str(bit_path))

@@ -3,6 +3,7 @@ sw repository context:
 Git Commit History:
 
 ```log
+f0408fe - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
 855fbe4 - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)
 4545e55 - 2026-08-08 : chore(pkg): bump version to 1.0.1 (SiririComun)
 5cca09d - 2026-08-08 : docs: add PyPI badges, virtual environment tutorial, and update version to 1.0.1 (SiririComun)
@@ -16,8 +17,7 @@ fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching ha
 be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)
 7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)
 9915316 - 2026-08-08 : feat(cli): add notebook installer CLI command and copy_notebooks function (SiririComun)
-2314141 - 2026-08-08 : docs: add comprehensive root README with architecture, hardware setup, and notebook guide (SiririComun)
-8669f21 - 2026-08-08 : docs(notebooks): add main 03_oscilloscope_dashboard.ipynb application notebook (SiririComun)```
+2314141 - 2026-08-08 : docs: add comprehensive root README with architecture, hardware setup, and notebook guide (SiririComun)```
 
 Files structure: 
 
@@ -38,15 +38,17 @@ Files structure:
 │   ├── ad3_wavegen.py
 │   ├── dashboard.py
 │   ├── env_checker.py
+│   ├── hw_trigger.py
 │   ├── __init__.py
 │   ├── loader.py
 │   ├── notebooks.py
+│   ├── overlay.py
 │   └── xadc_dma.py
 ├── README.md
 ├── requirements.txt
 └── setup.py
 
-5 directories, 18 files
+5 directories, 20 files
 ```
 
 hardware.json:
@@ -54,7 +56,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.0.2"
+    "version": "v1.1.0-rc1"
 }```
 
 setup.py:
@@ -115,6 +117,8 @@ __init__.py:
 pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope & AD3 integration.
 """
 
+from pynq_oscilloscope.overlay import OscilloscopeOverlay
+from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.env_checker import install_ad3_drivers, check_usb_permissions
 from pynq_oscilloscope.xadc_dma import StreamingXADC
@@ -122,8 +126,10 @@ from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = [
+    "OscilloscopeOverlay",
+    "HardwareTrigger",
     "HardwareLoader",
     "install_ad3_drivers",
     "check_usb_permissions",
@@ -144,12 +150,13 @@ from IPython.display import display
 import plotly.graph_objects as go
 
 from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 class OscilloscopeDashboard:
     """
     Unified, interactive real-time Plotly + IPywidgets Oscilloscope Dashboard.
-    Integrates high-speed XADC DMA data acquisition with AD3 signal generation.
+    Integrates FPGA Hardware Triggering + 1 MSPS DMA acquisition with AD3 signal generation.
     """
 
     def __init__(self, overlay=None, packet_size: int = 16384, display_window: int = 1024):
@@ -160,9 +167,25 @@ class OscilloscopeDashboard:
         self._is_running = False
         self._thread = None
         
-        # Instantiate Hardware Drivers
-        self.ad3 = AD3SignalGenerator()
-        self.xadc = None
+        # Attach or instantiate sub-drivers
+        if self.overlay and hasattr(self.overlay, "wavegen"):
+            self.ad3 = self.overlay.wavegen
+        else:
+            self.ad3 = AD3SignalGenerator()
+
+        if self.overlay and hasattr(self.overlay, "trigger"):
+            self.trigger = self.overlay.trigger
+        elif self.overlay:
+            self.trigger = HardwareTrigger(self.overlay)
+        else:
+            self.trigger = None
+
+        if self.overlay and hasattr(self.overlay, "xadc"):
+            self.xadc = self.overlay.xadc
+        elif self.overlay:
+            self.xadc = StreamingXADC(self.overlay, default_packet_size=self.packet_size)
+        else:
+            self.xadc = None
         
         # Build UI Controls & Plotly Canvas
         self._build_ui()
@@ -173,91 +196,105 @@ class OscilloscopeDashboard:
         # 1. Action Buttons
         self.start_btn = widgets.Button(description="Start", button_style="success", icon="play")
         self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop")
+        self.force_trig_btn = widgets.Button(description="Force / Arm", button_style="warning", icon="bolt")
         
         self.start_btn.on_click(self._on_start_clicked)
         self.stop_btn.on_click(self._on_stop_clicked)
+        self.force_trig_btn.on_click(self._on_force_trig_clicked)
 
-        # 2. Waveform Shape Dropdown
+        # 2. AD3 Waveform Controls
         self.shape_dropdown = widgets.Dropdown(
             options=["Sine", "Triangle", "Square"],
             value="Sine",
-            description="Waveform:"
+            description="Waveform:",
+            layout=widgets.Layout(width="200px")
         )
-
-        # 3. Frequency Controls with Zero-Latency Client-Side Link
         self.freq_slider = widgets.IntSlider(
-            value=10000,
-            min=100,
-            max=1000000,
-            step=1,
-            description="Freq Slider:",
-            continuous_update=False,
-            layout=widgets.Layout(width="400px")
+            value=10000, min=100, max=1000000, step=1,
+            description="Freq Slider:", continuous_update=False,
+            layout=widgets.Layout(width="350px")
         )
         self.freq_input = widgets.BoundedIntText(
-            value=10000,
-            min=100,
-            max=1000000,
-            step=1,
-            description="Exact Freq:"
+            value=10000, min=100, max=1000000, step=1,
+            description="Exact Freq:", layout=widgets.Layout(width="180px")
         )
         widgets.jslink((self.freq_slider, "value"), (self.freq_input, "value"))
 
-        # 4. Amplitude Controls with Zero-Latency Client-Side Link
         self.amp_slider = widgets.FloatSlider(
-            value=1.5,
-            min=0.1,
-            max=1.5,
-            step=0.1,
-            description="Amp Slider:",
-            continuous_update=False,
-            layout=widgets.Layout(width="300px")
+            value=1.5, min=0.1, max=1.5, step=0.1,
+            description="Amp Slider:", continuous_update=False,
+            layout=widgets.Layout(width="280px")
         )
         self.amp_input = widgets.BoundedFloatText(
-            value=1.5,
-            min=0.1,
-            max=1.5,
-            step=0.1,
-            description="Exact Amp:"
+            value=1.5, min=0.1, max=1.5, step=0.1,
+            description="Exact Amp:", layout=widgets.Layout(width="150px")
         )
         widgets.jslink((self.amp_slider, "value"), (self.amp_input, "value"))
 
-        # 5. Toggles
-        self.trigger_toggle = widgets.ToggleButton(
-            value=True,
-            description="Trigger",
-            button_style="info",
-            tooltip="Activate rising-edge software trigger (Stationary Mode)"
+        # 3. Hardware Trigger Controls
+        self.trig_mode_dropdown = widgets.Dropdown(
+            options=["Auto", "Normal", "Single"],
+            value="Auto",
+            description="Trig Mode:",
+            layout=widgets.Layout(width="180px")
         )
+        self.trig_edge_dropdown = widgets.Dropdown(
+            options=["Rising", "Falling"],
+            value="Rising",
+            description="Trig Edge:",
+            layout=widgets.Layout(width="180px")
+        )
+        self.trig_level_slider = widgets.FloatSlider(
+            value=1.65, min=0.0, max=3.3, step=0.05,
+            description="Trig Level:", continuous_update=False,
+            layout=widgets.Layout(width="280px")
+        )
+        self.trig_level_input = widgets.BoundedFloatText(
+            value=1.65, min=0.0, max=3.3, step=0.05,
+            description="Exact Level:", layout=widgets.Layout(width="150px")
+        )
+        widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
+
+        # 4. Display Toggles
         self.autorange_toggle = widgets.ToggleButton(
-            value=True,
-            description="Auto-Range",
-            button_style="info",
-            tooltip="Activate adaptive time and voltage grid scaling"
+            value=True, description="Auto-Range",
+            button_style="info", tooltip="Activate adaptive time and voltage grid scaling"
         )
 
-        # 6. Digital Vpp Readout
+        # 5. Digital Vpp Readout
         self.readout = widgets.HTML(
-            value="<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: 0.00 V</h3>"
+            value="<h3 style='color: #00FFCC; margin: 0; font-family: monospace;'>Live Vpp: 0.00 V</h3>"
         )
 
     def _build_plot(self):
-        """Construct Plotly FigureWidget Canvas."""
+        """Construct Plotly FigureWidget Canvas with live Trigger Level Line."""
         self.fig = go.FigureWidget()
+        
+        # Trace 0: Analog Channel Data
         self.fig.add_scatter(
             x=list(range(self.display_window)),
             y=[0] * self.display_window,
             mode="lines",
             line=dict(color="#00FFCC", width=2),
-            name="A0 Channel"
+            name="A0 (Analog In)"
         )
+        
+        # Trace 1: Visual Trigger Threshold Level (Dashed Orange Line)
+        self.fig.add_scatter(
+            x=[0, self.display_window],
+            y=[1.65, 1.65],
+            mode="lines",
+            line=dict(color="#FFA500", width=1.5, dash="dash"),
+            name="Trigger Level"
+        )
+
         self.fig.update_layout(
-            title="<b>Real-Time 1 MSPS DMA Oscilloscope</b>",
-            xaxis_title="Time (Microseconds)",
+            title="<b>Real-Time 1 MSPS Hardware-Triggered Oscilloscope</b>",
+            xaxis_title="Time (Microseconds / Samples @ 1 MSPS)",
             yaxis_title="Voltage (V)",
             yaxis_range=[0, 3.5],
             template="plotly_dark",
-            height=450,
+            height=460,
             margin=dict(l=40, r=20, t=50, b=40),
             uirevision="oscilloscope_view_state"
         )
@@ -268,12 +305,21 @@ class OscilloscopeDashboard:
     def _on_stop_clicked(self, b):
         self.stop()
 
+    def _on_force_trig_clicked(self, b):
+        if self.trigger:
+            self.trigger.force_trigger()
+
     def _update_loop(self):
         """Background thread execution loop for acquisition & UI updates."""
         try:
-            # Initialize hardware acquisition if overlay provided
-            if self.overlay and self.xadc is None:
-                self.xadc = StreamingXADC(self.overlay, default_packet_size=self.packet_size)
+            # Configure initial hardware trigger registers
+            if self.trigger:
+                self.trigger.configure(
+                    mode=self.trig_mode_dropdown.value,
+                    edge=self.trig_edge_dropdown.value,
+                    threshold_volts=float(self.trig_level_slider.value),
+                    timeout_ms=50.0
+                )
 
             # Start AD3 Signal Generation
             self.ad3.start(
@@ -282,92 +328,83 @@ class OscilloscopeDashboard:
                 amplitude=float(self.amp_slider.value)
             )
 
-            # --- SYNCHRONIZATION HANDSHAKE ---
-            # Wait for AD3 USB hardware initialization before taking the first acquisition frame
+            # Wait for AD3 USB hardware readiness
             wait_start = time.time()
             while self._is_running and not self.ad3.is_ready:
                 time.sleep(0.05)
                 if time.time() - wait_start > 4.0:
                     break
 
-            # Flush initial stale frame before entering main loop
-            if self.xadc and self._is_running:
-                try:
-                    _ = self.xadc.capture(crop_startup_samples=8)
-                except Exception:
-                    pass
-
             while self._is_running:
-                # Update AD3 parameters dynamically if changed via UI
+                # 1. Update AD3 parameters dynamically
                 self.ad3.update_parameters(
                     shape=self.shape_dropdown.value,
                     frequency=float(self.freq_slider.value),
                     amplitude=float(self.amp_slider.value)
                 )
 
-                # Capture frame from XADC DMA
+                # 2. Update Hardware Trigger Registers dynamically
+                if self.trigger:
+                    self.trigger.set_mode(self.trig_mode_dropdown.value)
+                    self.trigger.set_edge(self.trig_edge_dropdown.value)
+                    self.trigger.set_threshold(float(self.trig_level_slider.value))
+
+                # 3. Capture Hardware Triggered Frame from DMA
                 if self.xadc:
-                    voltages = self.xadc.capture(crop_startup_samples=8)
+                    voltages = self.xadc.capture(crop_startup_samples=0)
                 else:
+                    # Simulation mode fallback if no FPGA overlay connected
                     t = np.linspace(0, 0.016, self.packet_size)
                     voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
 
-                # --- FEATURE 1: SOFTWARE RISING-EDGE TRIGGER ---
-                trigger_idx = 0
-                if self.trigger_toggle.value and len(voltages) > 1:
-                    threshold = 1.65
-                    crossings = np.where((voltages[:-1] <= threshold) & (voltages[1:] > threshold))[0]
-                    if len(crossings) > 0:
-                        trigger_idx = crossings[0]
-
-                # --- FEATURE 2: ADAPTIVE AXIS SCALING (AUTO-RANGE) ---
+                # 4. Adaptive Window Slicing (Sample 0 is ALREADY the hardware trigger point!)
                 if self.autorange_toggle.value:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
                     show_samples = int(5 * period_us)
-                    show_samples = max(40, min(show_samples, self.display_window))
-                    
-                    max_idx = min(trigger_idx + show_samples, len(voltages))
-                    plot_voltages = voltages[trigger_idx : max_idx]
+                    show_samples = max(40, min(show_samples, self.display_window, len(voltages)))
+                    plot_voltages = voltages[:show_samples]
                 else:
-                    max_idx = min(trigger_idx + self.display_window, len(voltages))
-                    plot_voltages = voltages[trigger_idx : max_idx]
+                    max_idx = min(self.display_window, len(voltages))
+                    plot_voltages = voltages[:max_idx]
 
                 time_axis = np.arange(len(plot_voltages))
+                trig_v = float(self.trig_level_slider.value)
 
-                # --- ATOMIC CANVAS UPDATE ---
+                # 5. Atomic Canvas Batch Update
                 with self.fig.batch_update():
+                    # Update waveform
                     self.fig.data[0].x = time_axis
                     self.fig.data[0].y = plot_voltages
+                    # Update visual trigger line
+                    self.fig.data[1].x = [0, len(plot_voltages)]
+                    self.fig.data[1].y = [trig_v, trig_v]
+
                     if self.autorange_toggle.value:
                         amp = float(self.amp_slider.value)
-                        margin = 0.2
+                        margin = 0.25
                         self.fig.layout.xaxis.range = [0, len(plot_voltages)]
                         self.fig.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
 
-                # Update Live Vpp Readout
+                # 6. Update Live Vpp
                 if len(voltages) > 0:
                     vpp = np.max(voltages) - np.min(voltages)
-                    self.readout.value = f"<h3 style='color: #00FFCC; padding-left: 10px; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
+                    self.readout.value = f"<h3 style='color: #00FFCC; margin: 0; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
 
-                time.sleep(0.04)
+                time.sleep(0.035)
 
         except Exception as e:
             print(f"[Dashboard] Error in update loop: {e}")
         finally:
             self._is_running = False
             self.ad3.stop()
-            if self.xadc:
-                self.xadc.close()
-                self.xadc = None
             print("[Dashboard] Stopped cleanly.")
 
     def start(self):
         """Launch dashboard execution in background thread."""
         if self._is_running:
-            print("[Dashboard] Dashboard is already running.")
+            print("[Dashboard] Already running.")
             return
-
         self._is_running = True
         self._thread = threading.Thread(target=self._update_loop, daemon=True)
         self._thread.start()
@@ -380,11 +417,13 @@ class OscilloscopeDashboard:
 
     def display(self):
         """Render the complete UI Dashboard in Jupyter."""
-        row1 = widgets.HBox([self.start_btn, self.stop_btn, self.trigger_toggle, self.autorange_toggle, self.readout])
+        row1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_trig_btn, self.autorange_toggle, self.readout],
+                            layout=widgets.Layout(align_items="center", margin="0 0 10px 0"))
         row2 = widgets.HBox([self.shape_dropdown, self.amp_slider, self.amp_input])
         row3 = widgets.HBox([self.freq_slider, self.freq_input])
+        row4 = widgets.HBox([self.trig_mode_dropdown, self.trig_edge_dropdown, self.trig_level_slider, self.trig_level_input])
         
-        ui_layout = widgets.VBox([row1, row2, row3, self.fig])
+        ui_layout = widgets.VBox([row1, row4, row2, row3, self.fig])
         display(ui_layout)```
 
 env_checker.py:
@@ -513,7 +552,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.0.2"
+                "version": "v1.1.0-rc1"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -549,20 +588,19 @@ class HardwareLoader:
         return "pynq_z2"
 
     @classmethod
-    def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
+    def get_overlay_path(cls, version: str = None, download_dir: str = None) -> Path:
         """
-        Detects the host board, fetches matching compiled .bit and .hwh files
-        from GitHub Releases if missing, and loads the Overlay into the FPGA fabric.
+        Detects host board, downloads matching .bit and .hwh if missing,
+        and returns the local Path to the .bit file.
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.0.2")
+        target_version = version or config.get("version", "v1.1.0-rc1")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
         hwh_filename = f"{board_name}.hwh"
         
-        # Determine cache location
         if download_dir is None:
             download_dir = Path.home() / ".cache" / "pynq_oscilloscope" / target_version
         else:
@@ -573,29 +611,30 @@ class HardwareLoader:
         local_bit = download_dir / bit_filename
         local_hwh = download_dir / hwh_filename
         
-        # Base release URL on GitHub
         base_url = f"https://github.com/{repo}/releases/download/{target_version}/"
         url_bit = f"{base_url}{bit_filename}"
         url_hwh = f"{base_url}{hwh_filename}"
         
-        # Download files if they do not exist locally
         if not local_bit.exists() or not local_hwh.exists():
-            print(f"[HardwareLoader] Detected target board: '{board_name}'")
-            print(f"[HardwareLoader] Downloading overlay '{target_version}' from {repo}...")
-            
+            print(f"[HardwareLoader] Target board: '{board_name}'")
+            print(f"[HardwareLoader] Fetching overlay '{target_version}' from {repo}...")
             try:
                 urllib.request.urlretrieve(url_bit, local_bit)
                 urllib.request.urlretrieve(url_hwh, local_hwh)
-                print("[HardwareLoader] Overlay assets downloaded successfully.")
+                print("[HardwareLoader] Bitstream and handoff metadata downloaded.")
             except Exception as e:
-                print(f"[HardwareLoader] Error downloading release binaries: {e}")
                 raise RuntimeError(
-                    f"Could not download {bit_filename} from {base_url}. "
-                    "Ensure the board has internet access and the hardware release exists."
+                    f"Could not download {bit_filename} from {base_url}. Check internet connection."
                 ) from e
                 
-        print(f"[HardwareLoader] Loading overlay into FPGA fabric: {local_bit}")
-        return Overlay(str(local_bit))```
+        return local_bit
+
+    @classmethod
+    def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
+        """Backwards-compatible helper to load Overlay directly."""
+        bit_path = cls.get_overlay_path(version, download_dir)
+        print(f"[HardwareLoader] Loading overlay: {bit_path}")
+        return Overlay(str(bit_path))```
 
 notebooks.py:
 
@@ -660,41 +699,38 @@ class StreamingXADC:
     def __init__(self, overlay, default_packet_size: int = 16384):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
-        Default packet size is set to 16384 to match the hardware tlast_generator.
+        Default packet size is set to 16,384 to match the hardware packetizer.
         """
-        # Address-agnostic binding via PYNQ IP dictionary (.hwh metadata)
         if hasattr(overlay, "axi_dma_0"):
             self.dma = overlay.axi_dma_0
         else:
-            # Fallback search in IP dict for any DMA block
             dma_blocks = [ip for ip, details in overlay.ip_dict.items() if "dma" in ip.lower()]
             if not dma_blocks:
                 raise RuntimeError("No AXI DMA block found in the loaded hardware overlay.")
             self.dma = getattr(overlay, dma_blocks[0])
 
         self.packet_size = default_packet_size
-        # Allocate contiguous CMA buffer ONCE outside the capture loop to prevent memory fragmentation
+        # Allocate contiguous CMA buffer ONCE outside capture loop
         self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
-    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
         """
         Triggers a high-speed hardware DMA transfer (S2MM channel),
-        waits for completion, scales the raw 12-bit values to 0.0V - 3.3V,
-        and returns a NumPy array of voltages.
+        waits for completion, scales raw 12-bit left-aligned data to 0.0V - 3.3V,
+        and returns a NumPy array of physical voltages.
         """
-        # 1. Command DMA to write incoming stream into allocated physical RAM
+        # 1. Command DMA to receive incoming stream into CMA RAM
         self.dma.recvchannel.transfer(self._buffer)
         
-        # 2. Block until hardware transfer completes (asserted by TLAST generator at sample 16384)
+        # 2. Block until hardware transfer completes (asserted by TLAST at packet end)
         self.dma.recvchannel.wait()
         
-        # 3. Cast buffer to NumPy array
+        # 3. Cast to NumPy array
         raw_samples = np.array(self._buffer)
         
-        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V range
+        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V
         voltages = (raw_samples >> 4) * (3.3 / 4095.0)
         
-        # 5. Crop initial stale FIFO samples if requested
         if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
             voltages = voltages[crop_startup_samples:]
             
@@ -855,6 +891,288 @@ class AD3SignalGenerator:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()```
 
+hw_trigger.py:
+
+```python
+from typing import Union, Optional
+from pynq import MMIO
+
+class HardwareTrigger:
+    """
+    High-level Python driver for the FPGA-based 'axis_trigger_unit' IP.
+    
+    Interfaces via AXI4-Lite registers to configure hardware-level edge detection,
+    trigger voltage thresholds, hysteresis, auto-timeouts, and oscilloscope modes.
+    """
+
+    # Register Byte Offsets matching axis_trigger_unit.vhd
+    REG_CONTROL    = 0x00
+    REG_STATUS     = 0x04
+    REG_THRESHOLD  = 0x08
+    REG_TIMEOUT    = 0x0C
+    REG_HYSTERESIS = 0x10
+
+    # Bit masks for REG_CONTROL
+    BIT_ARM          = 1 << 0  # Bit 0: Arm trigger unit
+    BIT_AUTO_MODE    = 1 << 1  # Bit 1: 1 = Auto Mode, 0 = Normal Mode
+    BIT_EDGE_FALLING = 1 << 2  # Bit 2: 0 = Rising Edge, 1 = Falling Edge
+    BIT_SINGLE_SHOT  = 1 << 3  # Bit 3: 1 = Single Shot, 0 = Continuous
+    BIT_FORCE_TRIG   = 1 << 4  # Bit 4: Software force trigger pulse
+
+    # Bit masks for REG_STATUS
+    STATUS_ARMED     = 1 << 0
+    STATUS_TRIGGERED = 1 << 1
+    STATUS_STREAMING = 1 << 2
+
+    def __init__(self, overlay_or_mmio: Union[object, MMIO], clock_freq_hz: int = 100_000_000):
+        """
+        Initialize the Hardware Trigger driver from an Overlay object or an MMIO instance.
+        """
+        self.clock_freq_hz = clock_freq_hz
+        self.max_voltage = 3.3
+
+        # Dynamically discover MMIO from overlay or use provided MMIO directly
+        if isinstance(overlay_or_mmio, MMIO):
+            self.mmio = overlay_or_mmio
+        elif hasattr(overlay_or_mmio, "axis_trigger_unit_0"):
+            self.mmio = overlay_or_mmio.axis_trigger_unit_0.mmio
+        elif hasattr(overlay_or_mmio, "ip_dict"):
+            # Search IP dictionary for trigger core
+            trigger_ips = [k for k in overlay_or_mmio.ip_dict.keys() if "trigger" in k.lower()]
+            if trigger_ips:
+                self.mmio = getattr(overlay_or_mmio, trigger_ips[0]).mmio
+            else:
+                # Fallback to standard base address 0x43C10000
+                self.mmio = MMIO(0x43C10000, 65536)
+        else:
+            self.mmio = MMIO(0x43C10000, 65536)
+
+        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, Continuous
+        self.configure(
+            mode="Auto",
+            edge="Rising",
+            threshold_volts=1.65,
+            timeout_ms=50.0,
+            hysteresis_volts=0.02
+        )
+
+    # -------------------------------------------------------------------------
+    # Core Configuration Methods
+    # -------------------------------------------------------------------------
+
+    def configure(
+        self,
+        mode: str = "Auto",
+        edge: str = "Rising",
+        threshold_volts: float = 1.65,
+        timeout_ms: float = 50.0,
+        hysteresis_volts: float = 0.02
+    ):
+        """
+        Configure all hardware trigger settings simultaneously.
+
+        :param mode: Trigger mode: 'Auto', 'Normal', or 'Single'
+        :param edge: Trigger edge: 'Rising' or 'Falling'
+        :param threshold_volts: Target trigger level in Volts (0.0V - 3.3V)
+        :param timeout_ms: Auto-trigger fallback timeout in milliseconds
+        :param hysteresis_volts: Digital noise reject band in Volts
+        """
+        self.set_threshold(threshold_volts)
+        self.set_timeout_ms(timeout_ms)
+        self.set_hysteresis(hysteresis_volts)
+        self.set_edge(edge)
+        self.set_mode(mode)
+
+    def set_mode(self, mode: str):
+        """Set trigger operating mode: 'Auto', 'Normal', or 'Single'."""
+        mode_clean = mode.strip().capitalize()
+        ctrl = self.mmio.read(self.REG_CONTROL)
+
+        if mode_clean == "Auto":
+            ctrl |= (self.BIT_ARM | self.BIT_AUTO_MODE)
+            ctrl &= ~self.BIT_SINGLE_SHOT
+        elif mode_clean == "Normal":
+            ctrl |= self.BIT_ARM
+            ctrl &= ~(self.BIT_AUTO_MODE | self.BIT_SINGLE_SHOT)
+        elif mode_clean == "Single":
+            ctrl |= (self.BIT_ARM | self.BIT_SINGLE_SHOT)
+            ctrl &= ~self.BIT_AUTO_MODE
+        else:
+            raise ValueError(f"Invalid mode '{mode}'. Choose from: 'Auto', 'Normal', 'Single'.")
+
+        self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def set_edge(self, edge: str):
+        """Set trigger slope direction: 'Rising' or 'Falling'."""
+        edge_clean = edge.strip().capitalize()
+        ctrl = self.mmio.read(self.REG_CONTROL)
+
+        if edge_clean == "Rising":
+            ctrl &= ~self.BIT_EDGE_FALLING
+        elif edge_clean == "Falling":
+            ctrl |= self.BIT_EDGE_FALLING
+        else:
+            raise ValueError(f"Invalid edge '{edge}'. Choose from: 'Rising' or 'Falling'.")
+
+        self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def set_threshold(self, volts: float):
+        """
+        Set analog trigger threshold in Volts (0.0V to 3.3V).
+        Translates to 12-bit left-aligned ADC code (0x0000 to 0xFFF0).
+        """
+        clamped_volts = max(0.0, min(self.max_voltage, float(volts)))
+        # XADC is 12-bit left-aligned to 16 bits (shifted left by 4)
+        raw_12bit = int((clamped_volts / self.max_voltage) * 4095.0)
+        raw_code = (raw_12bit & 0xFFF) << 4
+        self.mmio.write(self.REG_THRESHOLD, raw_code)
+
+    def get_threshold(self) -> float:
+        """Read active threshold voltage from hardware register."""
+        raw_code = self.mmio.read(self.REG_THRESHOLD)
+        raw_12bit = (raw_code >> 4) & 0xFFF
+        return (raw_12bit / 4095.0) * self.max_voltage
+
+    def set_timeout_ms(self, timeout_ms: float):
+        """Set timeout in milliseconds for Auto-Trigger mode."""
+        cycles = int((float(timeout_ms) / 1000.0) * self.clock_freq_hz)
+        self.mmio.write(self.REG_TIMEOUT, max(100, cycles))
+
+    def get_timeout_ms(self) -> float:
+        """Read active auto-timeout in milliseconds."""
+        cycles = self.mmio.read(self.REG_TIMEOUT)
+        return (cycles / self.clock_freq_hz) * 1000.0
+
+    def set_hysteresis(self, volts: float):
+        """Set noise rejection band in Volts."""
+        clamped_volts = max(0.0, min(0.5, float(volts)))
+        raw_12bit = int((clamped_volts / self.max_voltage) * 4095.0)
+        raw_code = (raw_12bit & 0xFFF) << 4
+        self.mmio.write(self.REG_HYSTERESIS, raw_code)
+
+    # -------------------------------------------------------------------------
+    # Arming, Disarming & Manual Triggers
+    # -------------------------------------------------------------------------
+
+    def arm(self):
+        """Arm the trigger unit."""
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        self.mmio.write(self.REG_CONTROL, ctrl | self.BIT_ARM)
+
+    def disarm(self):
+        """Disarm the trigger unit (halts stream pass-through)."""
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        self.mmio.write(self.REG_CONTROL, ctrl & ~self.BIT_ARM)
+
+    def force_trigger(self):
+        """Manually trigger acquisition via software pulse."""
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        self.mmio.write(self.REG_CONTROL, ctrl | self.BIT_FORCE_TRIG)
+
+    # -------------------------------------------------------------------------
+    # Status Properties
+    # -------------------------------------------------------------------------
+
+    @property
+    def is_armed(self) -> bool:
+        """Return True if hardware trigger is armed and awaiting an edge."""
+        return bool(self.mmio.read(self.REG_STATUS) & self.STATUS_ARMED)
+
+    @property
+    def is_triggered(self) -> bool:
+        """Return True if a valid trigger event occurred and stream is flowing."""
+        return bool(self.mmio.read(self.REG_STATUS) & self.STATUS_TRIGGERED)
+
+    def __repr__(self) -> str:
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        edge = "Falling" if (ctrl & self.BIT_EDGE_FALLING) else "Rising"
+        mode = "Auto" if (ctrl & self.BIT_AUTO_MODE) else ("Single" if (ctrl & self.BIT_SINGLE_SHOT) else "Normal")
+        armed = "ARMED" if (ctrl & self.BIT_ARM) else "DISARMED"
+        thresh = self.get_threshold()
+        return f"<HardwareTrigger: {armed}, Mode={mode}, Edge={edge}, Threshold={thresh:.2f}V>"```
+
+overlay.py:
+
+```python
+from pathlib import Path
+from typing import Union, Optional
+from pynq import Overlay
+
+from pynq_oscilloscope.loader import HardwareLoader
+from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.hw_trigger import HardwareTrigger
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+
+class OscilloscopeOverlay(Overlay):
+    """
+    Unified Custom Overlay for the PYNQ-Z2 1 MSPS Hardware-Triggered Oscilloscope.
+    
+    Subclasses pynq.Overlay to provide unified access to:
+      • self.trigger  -> HardwareTrigger (AXI-Lite edge & threshold registers)
+      • self.xadc     -> StreamingXADC (1 MSPS DMA Stream receiver)
+      • self.wavegen  -> AD3SignalGenerator (Digilent AD3 waveform generator)
+      • self.dashboard() -> Launches interactive Plotly + IPywidgets UI
+    """
+
+    def __init__(
+        self,
+        bitfile_name: Optional[Union[str, Path]] = None,
+        version: Optional[str] = None,
+        packet_size: int = 16384,
+        **kwargs
+    ):
+        """
+        Initialize the Oscilloscope Overlay.
+
+        :param bitfile_name: Path to a local .bit file (e.g. './pynq_z2.bit').
+                             If None, automatically detects board and fetches pinned release.
+        :param version: Release tag override (e.g. 'v1.1.0-rc1').
+        :param packet_size: Number of 1 MSPS samples per DMA frame (Default: 16,384).
+        """
+        # Resolve bitstream path
+        if bitfile_name is None:
+            resolved_bit = str(HardwareLoader.get_overlay_path(version=version))
+        else:
+            resolved_bit = str(Path(bitfile_name).resolve())
+
+        # Program FPGA fabric via base pynq.Overlay
+        super().__init__(resolved_bit, **kwargs)
+
+        # Initialize sub-drivers
+        self.packet_size = packet_size
+        self.trigger = HardwareTrigger(self)
+        self.xadc = StreamingXADC(self, default_packet_size=packet_size)
+        self.wavegen = AD3SignalGenerator()
+
+    def capture(self, crop_startup_samples: int = 8):
+        """Trigger a DMA capture and return a NumPy array of voltages."""
+        return self.xadc.capture(crop_startup_samples=crop_startup_samples)
+
+    def dashboard(self, display_window: int = 1024):
+        """
+        Instantiate and display the interactive Plotly + IPywidgets dashboard.
+        """
+        from pynq_oscilloscope.dashboard import OscilloscopeDashboard
+        dash = OscilloscopeDashboard(overlay=self, packet_size=self.packet_size, display_window=display_window)
+        dash.display()
+        return dash
+
+    def close(self):
+        """Cleanly release CMA memory buffers and stop active wavegen."""
+        if hasattr(self, "xadc") and self.xadc is not None:
+            self.xadc.close()
+        if hasattr(self, "wavegen") and self.wavegen is not None:
+            self.wavegen.stop()
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()```
+
 01_ad3_getting_started.ipynb:
 
 ```json
@@ -975,17 +1293,17 @@ class AD3SignalGenerator:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 2: Standalone High-Speed XADC DMA Acquisition\n",
+    "# Notebook 2: Standalone High-Speed XADC DMA Acquisition & Hardware Triggering\n",
     "\n",
-    "This notebook demonstrates how to automatically load the hardware overlay from GitHub Releases using **`HardwareLoader`** and perform high-speed 1 MSPS analog acquisition using **`StreamingXADC`**."
+    "This notebook demonstrates how to load the hardware overlay using **`OscilloscopeOverlay`**, configure the FPGA **`HardwareTrigger`** registers, and capture 1 MSPS analog streams direct to DDR memory."
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 1. Automatic Hardware Overlay Loading\n",
-    "We use `HardwareLoader.load_overlay()` to detect our board (PYNQ-Z2) and automatically fetch the matching `pynq_z2.bit` and `pynq_z2.hwh` files from GitHub Releases (`v1.0.2`)."
+    "## 1. Load Hardware Overlay\n",
+    "Instantiate `OscilloscopeOverlay()`. It automatically identifies the board (PYNQ-Z2) and fetches the pinned `v1.1.0-rc1` release binaries from GitHub Releases."
    ]
   },
   {
@@ -994,19 +1312,20 @@ class AD3SignalGenerator:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import HardwareLoader\n",
+    "from pynq_oscilloscope import OscilloscopeOverlay\n",
     "\n",
-    "# Auto-detect board and load pinned v1.0.2 overlay\n",
-    "overlay = HardwareLoader.load_overlay()\n",
-    "print(\"Hardware overlay loaded successfully!\")"
+    "# Auto-detect board and load overlay (or pass local path './pynq_z2.bit')\n",
+    "ol = OscilloscopeOverlay()\n",
+    "print(\"Oscilloscope Overlay loaded successfully!\")\n",
+    "print(\"Active Trigger Configuration:\", ol.trigger)"
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 2. High-Speed 1 MSPS DMA Capture\n",
-    "Using `StreamingXADC`, we instantiate a contiguous memory buffer (CMA) and trigger a 1024-sample DMA transfer from the XADC block."
+    "## 2. Configure Hardware Trigger Registers\n",
+    "Configure the FPGA trigger unit (`axis_trigger_unit_0` @ `0x43C10000`) for a Rising-edge trigger at 1.65V with Auto timeout."
    ]
   },
   {
@@ -1015,26 +1334,37 @@ class AD3SignalGenerator:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import StreamingXADC\n",
-    "\n",
-    "# Instantiate streaming XADC driver with 16384 packet size matching hardware\n",
-    "xadc = StreamingXADC(overlay, default_packet_size=16384)\n",
-    "\n",
-    "# Capture 16,384 samples (16.384 milliseconds of 1 MSPS data)\n",
-    "voltages = xadc.capture(crop_startup_samples=8)\n",
+    "# Set Hardware Trigger: Rising Edge @ 1.65V in Auto Mode\n",
+    "ol.trigger.configure(mode=\"Auto\", edge=\"Rising\", threshold_volts=1.65, timeout_ms=50.0)\n",
+    "print(f\"Hardware Trigger Threshold: {ol.trigger.get_threshold():.2f} V\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. High-Speed 1 MSPS DMA Capture\n",
+    "Trigger the acquisition. Sample `[0]` in the returned array is guaranteed to be hardware-aligned to the trigger edge!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Capture 16,384 samples (16.384 ms of 1 MSPS data)\n",
+    "voltages = ol.capture()\n",
     "print(f\"Captured {len(voltages)} samples successfully!\")\n",
-    "print(f\"Sample Voltage Range: Min = {voltages.min():.2f} V, Max = {voltages.max():.2f} V\")\n",
-    "\n",
-    "# Close buffer\n",
-    "xadc.close()"
+    "print(f\"Sample Voltage Range: Min = {voltages.min():.2f} V, Max = {voltages.max():.2f} V\")"
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 3. Waveform Visualization with Matplotlib\n",
-    "Plot the captured high-speed 1 MSPS waveform."
+    "## 4. Waveform Visualization with Matplotlib\n",
+    "Plot the captured waveform."
    ]
   },
   {
@@ -1045,15 +1375,14 @@ class AD3SignalGenerator:
    "source": [
     "import matplotlib.pyplot as plt\n",
     "\n",
-    "# Render high-quality waveform plot\n",
     "fig, ax = plt.subplots(figsize=(10, 4.5), dpi=100)\n",
-    "ax.plot(voltages, color=\"#2B6CB0\", linewidth=1.8, label=\"A0 Channel (XADC)\")\n",
+    "ax.plot(voltages[:500], color=\"#00A389\", linewidth=1.8, label=\"A0 Channel (Hardware Triggered)\")\n",
+    "ax.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", label=\"Trigger Threshold (1.65V)\")\n",
     "\n",
-    "ax.set_title(\"Hardware-Driven 1 MSPS XADC Stream Capture\", fontsize=12, fontweight=\"bold\")\n",
-    "ax.set_xlabel(\"Time (Microseconds)\", fontsize=10)\n",
+    "ax.set_title(\"Hardware-Triggered 1 MSPS XADC Stream Capture\", fontsize=12, fontweight=\"bold\")\n",
+    "ax.set_xlabel(\"Time (Microseconds / Samples)\", fontsize=10)\n",
     "ax.set_ylabel(\"Measured Voltage (V)\", fontsize=10)\n",
     "ax.set_ylim(0, 3.5)\n",
-    "ax.set_xlim(0, len(voltages))\n",
     "ax.grid(True, linestyle=\"--\", alpha=0.5)\n",
     "ax.legend(loc=\"upper right\")\n",
     "\n",
@@ -1081,25 +1410,22 @@ class AD3SignalGenerator:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 3: Real-Time Interactive Oscilloscope Dashboard\n",
+    "# Notebook 3: Real-Time Hardware-Triggered Oscilloscope Dashboard\n",
     "\n",
-    "This notebook deploys the main interactive closed-loop **Oscilloscope Dashboard** using `pynq_oscilloscope`.\n",
+    "This notebook deploys the complete interactive closed-loop **Oscilloscope Dashboard** using the new `OscilloscopeOverlay`.\n",
     "\n",
     "### Features:\n",
-    "- **Real-time 1 MSPS DMA Acquisition** (XADC via AXI DMA)\n",
-    "- **Non-blocking Waveform Generation** (Analog Discovery 3 via `pydwf` background thread)\n",
-    "- **Interactive Dark-Mode Plotly UI** with `uirevision` viewport locks\n",
-    "- **Zero-Latency Client-Side Controls** using `widgets.jslink()`\n",
-    "- **Software Rising-Edge Trigger** (Stationary Waveform Mode)\n",
-    "- **Adaptive Axis Auto-Ranging** & Live $V_{pp}$ Readout"
+    "- **FPGA Hardware Triggering** (Rising/Falling edge, Auto/Normal/Single modes, sub-microsecond alignment)\n",
+    "- **Real-time 1 MSPS DMA Acquisition** (XADC via AXI DMA direct to DDR)\n",
+    "- **Non-blocking Waveform Generation** (Digilent AD3 via background worker)\n",
+    "- **Interactive Dark-Mode Plotly UI** with real-time visual trigger line and zero-latency client-side links"
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 1. System & USB Permission Verification\n",
-    "Ensure USB permissions are granted so Jupyter can communicate with the Analog Discovery 3."
+    "## 1. System & USB Permission Verification"
    ]
   },
   {
@@ -1118,8 +1444,8 @@ class AD3SignalGenerator:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 2. Automatic Hardware Overlay Loading\n",
-    "Fetch and load the pinned hardware overlay (`v1.0.2`) from GitHub Releases."
+    "## 2. Launch Complete Oscilloscope Dashboard\n",
+    "Instantiate `OscilloscopeOverlay` and call `.dashboard()` to start the real-time application."
    ]
   },
   {
@@ -1128,19 +1454,21 @@ class AD3SignalGenerator:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import HardwareLoader\n",
+    "from pynq_oscilloscope import OscilloscopeOverlay\n",
     "\n",
-    "# Auto-detect board model and load target overlay\n",
-    "overlay = HardwareLoader.load_overlay()\n",
-    "print(\"Hardware overlay loaded successfully!\")"
+    "# 1. Initialize Overlay (auto-downloads v1.1.0-rc1 or loads local .bit)\n",
+    "ol = OscilloscopeOverlay()\n",
+    "\n",
+    "# 2. Render and launch interactive Dashboard\n",
+    "app = ol.dashboard()"
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 3. Deploy Interactive Oscilloscope Dashboard\n",
-    "Instantiate the high-level dashboard and display the UI controls and live Plotly canvas."
+    "## 3. Hardware Shutdown & Cleanup\n",
+    "Click **Stop** on the dashboard or execute this cell to disconnect the AD3 and release memory."
    ]
   },
   {
@@ -1149,31 +1477,8 @@ class AD3SignalGenerator:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import OscilloscopeDashboard\n",
-    "\n",
-    "# Instantiate the Dashboard\n",
-    "app = OscilloscopeDashboard(overlay=overlay)\n",
-    "\n",
-    "# Display UI Layout & Plotly Canvas\n",
-    "app.display()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. Hardware Shutdown & Cleanup\n",
-    "Run this cell or click **Stop** on the dashboard to safely disconnect the Analog Discovery 3 and release the DMA memory buffer."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Halt background update loop and release hardware handles\n",
     "app.stop()\n",
+    "ol.close()\n",
     "print(\"Oscilloscope dashboard stopped cleanly.\")"
    ]
   }
@@ -1251,6 +1556,8 @@ TARGET_FILES=(
     "pynq_oscilloscope/notebooks.py:python"
     "pynq_oscilloscope/xadc_dma.py:python"
     "pynq_oscilloscope/ad3_wavegen.py:python"
+    "pynq_oscilloscope/hw_trigger.py:python"
+    "pynq_oscilloscope/overlay.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"

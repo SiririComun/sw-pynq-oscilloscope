@@ -10,41 +10,38 @@ class StreamingXADC:
     def __init__(self, overlay, default_packet_size: int = 16384):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
-        Default packet size is set to 16384 to match the hardware tlast_generator.
+        Default packet size is set to 16,384 to match the hardware packetizer.
         """
-        # Address-agnostic binding via PYNQ IP dictionary (.hwh metadata)
         if hasattr(overlay, "axi_dma_0"):
             self.dma = overlay.axi_dma_0
         else:
-            # Fallback search in IP dict for any DMA block
             dma_blocks = [ip for ip, details in overlay.ip_dict.items() if "dma" in ip.lower()]
             if not dma_blocks:
                 raise RuntimeError("No AXI DMA block found in the loaded hardware overlay.")
             self.dma = getattr(overlay, dma_blocks[0])
 
         self.packet_size = default_packet_size
-        # Allocate contiguous CMA buffer ONCE outside the capture loop to prevent memory fragmentation
+        # Allocate contiguous CMA buffer ONCE outside capture loop
         self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
-    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
         """
         Triggers a high-speed hardware DMA transfer (S2MM channel),
-        waits for completion, scales the raw 12-bit values to 0.0V - 3.3V,
-        and returns a NumPy array of voltages.
+        waits for completion, scales raw 12-bit left-aligned data to 0.0V - 3.3V,
+        and returns a NumPy array of physical voltages.
         """
-        # 1. Command DMA to write incoming stream into allocated physical RAM
+        # 1. Command DMA to receive incoming stream into CMA RAM
         self.dma.recvchannel.transfer(self._buffer)
         
-        # 2. Block until hardware transfer completes (asserted by TLAST generator at sample 16384)
+        # 2. Block until hardware transfer completes (asserted by TLAST at packet end)
         self.dma.recvchannel.wait()
         
-        # 3. Cast buffer to NumPy array
+        # 3. Cast to NumPy array
         raw_samples = np.array(self._buffer)
         
-        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V range
+        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V
         voltages = (raw_samples >> 4) * (3.3 / 4095.0)
         
-        # 5. Crop initial stale FIFO samples if requested
         if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
             voltages = voltages[crop_startup_samples:]
             
