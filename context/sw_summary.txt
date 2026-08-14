@@ -3,6 +3,7 @@ sw repository context:
 Git Commit History:
 
 ```log
+c35d0d1 - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
 f0408fe - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
 855fbe4 - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)
 4545e55 - 2026-08-08 : chore(pkg): bump version to 1.0.1 (SiririComun)
@@ -16,8 +17,7 @@ fc0d4dc - 2026-08-08 : fix(dma): update default packet size to 16384 matching ha
 16e2101 - 2026-08-08 : fix(loader): update board detection to support PYNQ v3.0+ (SiririComun)
 be8ae69 - 2026-08-08 : fix(deps): lower minimum numpy version to match pre-installed PYNQ OS packages (SiririComun)
 7763d71 - 2026-08-08 : docs: update README with notebook CLI installer and copy_notebooks documentation (SiririComun)
-9915316 - 2026-08-08 : feat(cli): add notebook installer CLI command and copy_notebooks function (SiririComun)
-2314141 - 2026-08-08 : docs: add comprehensive root README with architecture, hardware setup, and notebook guide (SiririComun)```
+9915316 - 2026-08-08 : feat(cli): add notebook installer CLI command and copy_notebooks function (SiririComun)```
 
 Files structure: 
 

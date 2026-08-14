@@ -1,47 +1,56 @@
-# Real-Time 1 MSPS PYNQ Oscilloscope
+# Real-Time 1 MSPS Hardware-Triggered PYNQ Oscilloscope
 
 [![PyPI Version](https://img.shields.io/pypi/v/pynq-oscilloscope.svg)](https://pypi.org/project/pynq-oscilloscope/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.0.2-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
+[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.1.0--rc1-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
 [![Board Support](https://img.shields.io/badge/Board-PYNQ--Z2-green.svg)](https://tul.com.tw/ProductsPYNQ-Z2.html)
 
-A high-performance, interactive, dark-mode real-time Oscilloscope software stack running natively on PYNQ Linux platforms. 
+A high-performance, dark-mode real-time Oscilloscope software stack running natively on PYNQ Linux platforms. 
 
-Combines high-speed FPGA data acquisition (**1 MSPS XADC streaming via AXI DMA**) with an active analog wave generator (**Digilent Analog Discovery 3** via `pydwf`) into an interactive Plotly + IPywidgets dashboard.
+Features **sub-microsecond hardware-level edge triggering** (`axis_trigger_unit`), **1 MSPS XADC streaming via AXI DMA** direct to DDR memory, and non-blocking analog signal generation with the **Digilent Analog Discovery 3** via `pydwf`.
 
 ---
 
 ## 🏛 System Architecture
 
-This software repository operates as a lightweight client. It **automatically fetches its compiled hardware overlay binaries** (`pynq_z2.bit` and `pynq_z2.hwh`) from the pinned release `v1.0.2` of the [hw-xadc-dma-overlays](https://github.com/SiririComun/hw-xadc-dma-overlays) repository.
+This repository adopts the **canonical PYNQ Custom Overlay pattern** (`OscilloscopeOverlay`). It automatically pulls its compiled hardware bitstream and metadata from GitHub Releases (or loads local custom `.bit` builds) and encapsulates the DMA receiver, AXI-Lite trigger registers, and wavegen into a unified Python object.
 
 ```
  [ Analog Discovery 3 (W1) ] ──(Analog Jumper Wire)──> [ PYNQ-Z2 Header (A0) ]
               │                                                     │
-        (pydwf SDK)                                           (AXI DMA 1 MSPS)
+        (pydwf SDK)                                     (XADC 1 MSPS AXI-Stream)
               │                                                     │
               ▼                                                     ▼
- [ AD3SignalGenerator ] <──(pynq_oscilloscope)──> [ StreamingXADC DMA Driver ]
+ [ AD3SignalGenerator ]                              [ axis_trigger_unit IP ]
+              │                                     (Edge, Threshold, Auto Timeout)
+              │                                                     │
+              │                                                     ▼
+              │                                          [ AXI DMA S2MM Engine ]
+              │                                                     │
+              └───────────────────────┬─────────────────────────────┘
                                       │
                                       ▼
-                        [ OscilloscopeDashboard ]
-                 (Interactive Dark-Mode Plotly UI Canvas)
+                           [ OscilloscopeOverlay ]
+                   (Subclasses pynq.Overlay with sub-drivers)
+                    ├── .trigger  (HardwareTrigger AXI-Lite)
+                    ├── .xadc     (StreamingXADC DMA Driver)
+                    ├── .wavegen  (AD3SignalGenerator)
+                    └── .dashboard() (Interactive Plotly Canvas)
 ```
 
 ---
 
-## 🔌 Hardware Setup & Prerequisites
+## 🔌 Hardware Setup & Wiring
 
-Before running the application, make sure your hardware is connected according to these physical specifications:
-
-1. **USB Port Connection:**
-   * Plug the Analog Discovery 3 USB cable into the large rectangular **USB HOST** port on the PYNQ-Z2 board (next to the Ethernet port).
+1. **AD3 USB Connection:**
+   * Plug the Analog Discovery 3 USB cable into the large rectangular **USB HOST** port on the PYNQ-Z2 board (adjacent to Ethernet).
 2. **USB Cable Quality:**
-   * Use a high-quality **Data + Power USB-C cable**. Standard charging-only cables omit data lines.
+   * Ensure you use a **Data + Power USB-C cable** (charging-only cables will not be detected by Linux).
 3. **Power Supply:**
-   * Power the AD3 with an external **5V auxiliary power supply** to prevent board brownouts under load.
-4. **Signal Wire:**
-   * Connect a jumper wire from **Wavegen 1 (W1)** on the AD3 to **Analog Input A0** on the PYNQ-Z2 shield header. Connect AD3 **GND** to PYNQ **GND**.
+   * Power the AD3 with an external **5V auxiliary power supply** to prevent brownouts under load.
+4. **Analog Signals:**
+   * Connect a jumper wire from **Wavegen 1 (W1)** on the AD3 to **Analog Input A0** on the PYNQ-Z2 Arduino header.
+   * Connect an AD3 **GND** pin to a PYNQ-Z2 **GND** pin.
 
 ---
 
@@ -51,89 +60,76 @@ Before running the application, make sure your hardware is connected according t
 Connect to your PYNQ board via SSH or Jupyter Terminal and run:
 
 ```bash
-pip install pynq-oscilloscope
+pip install --upgrade pynq-oscilloscope
 ```
 
 ### 2. Copy Example Notebooks to Jupyter Workspace
-To copy this project's notebooks into a dedicated subfolder (`/home/xilinx/jupyter_notebooks/pynq_oscilloscope/`) without touching other installed PYNQ packages, run:
+Copy this project's notebooks into `/home/xilinx/jupyter_notebooks/pynq_oscilloscope/`:
 
 ```bash
 pynq-oscilloscope-get-notebooks
 ```
 
-*Alternatively, inside a Python or Jupyter session:*
-```python
-from pynq_oscilloscope import copy_notebooks
-
-copy_notebooks()
-```
-
 ### 3. Install Digilent AD3 Drivers
-Run the automated environment checker inside Python or Jupyter:
+Run the automated environment setup inside Python or a Jupyter cell:
 
 ```python
 from pynq_oscilloscope import install_ad3_drivers
 
-# Automatically downloads Digilent Adept + WaveForms .deb packages and sets USB permissions
+# Downloads Adept Runtime + WaveForms SDK and configures USB permissions
 install_ad3_drivers()
 ```
 
 ---
 
-## 🧪 Isolated Virtual Environment Setup Guide (Optional)
+## 💻 Python API Usage
 
-If you want to test or run `pynq-oscilloscope` inside an isolated Python virtual environment on your PYNQ board:
+### 1. Launch Interactive Dashboard in 2 Lines (Default Cloud Fetch)
+```python
+from pynq_oscilloscope import OscilloscopeOverlay
 
-```bash
-# 1. Create a virtual environment with system site-packages enabled
-python3 -m venv --system-site-packages /home/xilinx/clean_test_env
-source /home/xilinx/clean_test_env/bin/activate
+# Automatically identifies board (PYNQ-Z2), downloads v1.1.0-rc1 release, and loads FPGA
+ol = OscilloscopeOverlay()
 
-# 2. Link PYNQ system driver site-packages
-echo "/usr/local/share/pynq-venv/lib/python3.10/site-packages" > /home/xilinx/clean_test_env/lib/python3.10/site-packages/pynq_system.pth
-
-# 3. Install pynq-oscilloscope from PyPI
-pip install --no-deps -I pynq-oscilloscope
-
-# 4. Copy notebooks & register Jupyter kernel
-pynq-oscilloscope-get-notebooks
-pip install ipykernel
-python -m ipykernel install --user --name=clean_test_env --display-name "Python 3 (Clean Test Env)"
+# Launch dark-mode interactive Plotly + IPywidgets dashboard
+app = ol.dashboard()
 ```
 
-In Jupyter Notebook:
-1. Navigate to `pynq_oscilloscope/` and open `03_oscilloscope_dashboard.ipynb`.
-2. Click **Kernel** $\rightarrow$ **Change kernel** $\rightarrow$ **`Python 3 (Clean Test Env)`**.
-3. Run the cells!
+### 2. Load Local Custom Bitstream (Offline / Development)
+```python
+from pynq_oscilloscope import OscilloscopeOverlay
+
+# Load a local bitstream while preserving all driver hooks and UI tools
+ol = OscilloscopeOverlay("./pynq_z2.bit")
+app = ol.dashboard()
+```
+
+### 3. Programmatic Hardware Trigger & DMA Capture
+```python
+from pynq_oscilloscope import OscilloscopeOverlay
+
+ol = OscilloscopeOverlay()
+
+# Configure FPGA Trigger: Rising Edge @ 1.65V with 50 ms Auto-timeout
+ol.trigger.configure(mode="Auto", edge="Rising", threshold_volts=1.65, timeout_ms=50.0)
+
+# Capture 16,384 samples (Sample [0] is guaranteed hardware-aligned to trigger point!)
+voltages = ol.capture()
+print(f"Captured {len(voltages)} samples. Min: {voltages.min():.2f}V, Max: {voltages.max():.2f}V")
+
+# Clean release of memory buffers
+ol.close()
+```
 
 ---
 
 ## 📓 Notebook Suite
 
-This repository includes three progressive interactive notebooks inside the `notebooks/` directory:
-
 | Notebook | Description | Key Modules Used |
 | :--- | :--- | :--- |
-| **`01_ad3_getting_started.ipynb`** | Verifies Digilent drivers and generates analog signals (Sine, Square, Triangle) in a background thread. | `AD3SignalGenerator`, `check_usb_permissions` |
-| **`02_xadc_getting_started.ipynb`** | Automatically fetches `v1.0.2` overlay and captures 1 MSPS analog streams direct to DDR memory. | `HardwareLoader`, `StreamingXADC` |
-| **`03_oscilloscope_dashboard.ipynb`** | **Main Application:** Deploys the complete interactive closed-loop Plotly Oscilloscope with triggers and auto-ranging. | `OscilloscopeDashboard` |
-
----
-
-## 💻 Python Package Usage Example
-
-You can deploy the complete Oscilloscope Dashboard in 3 lines of Python code:
-
-```python
-from pynq_oscilloscope import HardwareLoader, OscilloscopeDashboard
-
-# 1. Fetch board overlay (v1.0.2) from GitHub Releases
-overlay = HardwareLoader.load_overlay()
-
-# 2. Instantiate and render interactive Oscilloscope
-app = OscilloscopeDashboard(overlay=overlay)
-app.display()
-```
+| **`01_ad3_getting_started.ipynb`** | Verifies Digilent drivers and generates analog signals (Sine, Square, Triangle) in a non-blocking background worker. | `AD3SignalGenerator`, `check_usb_permissions` |
+| **`02_xadc_getting_started.ipynb`** | Demonstrates `OscilloscopeOverlay`, hardware register trigger configuration (`ol.trigger`), and DMA capture. | `OscilloscopeOverlay`, `HardwareTrigger` |
+| **`03_oscilloscope_dashboard.ipynb`** | **Main Application:** Deploys the complete interactive Plotly Oscilloscope with live trigger line, auto-ranging, and AD3 integration. | `OscilloscopeOverlay` |
 
 ---
 
