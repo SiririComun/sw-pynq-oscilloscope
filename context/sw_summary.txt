@@ -4,11 +4,12 @@ Git Context & Branch Info:
 Current Branch: feat/pl-fft
 Branch Tracking Status:
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-fft     3aae7b1 docs(context): capture branch status and commit graph in SW context summary
+* feat/pl-fft     1dc5fea [origin/feat/pl-fft] feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard
   main            3aae7b1 [origin/main] docs(context): capture branch status and commit graph in SW context summary
 
 Git Commit Graph & History:
-* 3aae7b1  (HEAD -> feat/pl-fft, origin/main, origin/HEAD, main) - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
+* 1dc5fea  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
+* 3aae7b1  (origin/main, origin/HEAD, main) - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
 * 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
 * cff6d3c  (origin/feat/hw-trigger, feat/hw-trigger) - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)
 * 24ba5f0  - 2026-08-13 : docs(context): track CI PyPI workflow and update SW summary (SiririComun)
@@ -21,8 +22,7 @@ Git Commit Graph & History:
 * 862fa4d  - 2026-08-08 : chore(pkg): set distribution package name to pynq-oscilloscope (SiririComun)
 * cff0288  - 2026-08-08 : fix(deps): remove unnecessary plotlywidget from requirements to fix pip install (SiririComun)
 * 89e4719  - 2026-08-08 : fix(deps): remove pynq from install_requires to prevent PyPI build errors on PYNQ boards (SiririComun)
-* dcad02d  - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)
-* 4efcf80  - 2026-08-08 : fix(ui): adjust Plotly display window scaling and pin plotly 5.x dependencies (SiririComun)```
+* dcad02d  - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)```
 
 Files structure: 
 
@@ -214,7 +214,13 @@ class OscilloscopeDashboard:
     Integrates FPGA Hardware Triggering, 1 MSPS DMA acquisition, 2048-pt PL FFT, and AD3 wavegen.
     """
 
-    def __init__(self, overlay=None, packet_size: int = 16384, fft_points: int = 2048, display_window: int = 1024):
+    def __init__(
+        self,
+        overlay=None,
+        packet_size: int = 16384,
+        fft_points: int = 2048,
+        display_window: int = 1024
+    ):
         self.overlay = overlay
         self.packet_size = packet_size
         self.fft_points = fft_points
@@ -499,25 +505,29 @@ class OscilloscopeDashboard:
                     self.trigger.set_edge(self.trig_edge_dropdown.value)
                     self.trigger.set_threshold(float(self.trig_level_slider.value))
 
-                # 3. Capture Time Domain (DMA 0)
-                if self.xadc:
-                    voltages = self.xadc.capture(crop_startup_samples=0)
-                else:
-                    t = np.linspace(0, 0.016, self.packet_size)
-                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
-
-                # 4. Capture Frequency Domain from PL FFT (DMA 1)
+                # 3. Synchronized Dual DMA Capture (Prevents Broadcaster Deadlock)
                 unit_name = self.fft_unit_dropdown.value
-                if self.fft:
+                if self.overlay and hasattr(self.overlay, "capture_both"):
+                    voltages, freqs, mags = self.overlay.capture_both(unit=unit_name)
+                elif self.xadc and self.fft:
+                    self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+                    self.fft.dma.recvchannel.transfer(self.fft._buffer)
+                    self.xadc.dma.recvchannel.wait()
+                    self.fft.dma.recvchannel.wait()
+                    raw_time = np.array(self.xadc._buffer)
+                    voltages = (raw_time >> 4) * (3.3 / 4095.0)
                     freqs, mags = self.fft.capture_spectrum(unit=unit_name)
                 else:
+                    # Simulation fallback
+                    t = np.linspace(0, 0.016, self.packet_size)
+                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
                     freqs = np.linspace(0, 500000, 1024)
                     mags = -60.0 + 40.0 * np.exp(-((freqs - self.freq_slider.value) / 1500.0) ** 2)
 
                 # Peak frequency tracking
                 peak_f, peak_m = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=500.0)
 
-                # 5. Time Domain Window Slicing
+                # 4. Time Domain Window Slicing
                 if self.autorange_toggle.value:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
@@ -532,7 +542,7 @@ class OscilloscopeDashboard:
                 trig_v = float(self.trig_level_slider.value)
                 max_freq_span = float(self.fft_span_dropdown.value)
 
-                # 6. Atomic Canvas Batch Updates
+                # 5. Atomic Canvas Batch Updates
                 # Update Tab 1: Scope
                 with self.fig_scope.batch_update():
                     self.fig_scope.data[0].x = time_axis
@@ -568,7 +578,7 @@ class OscilloscopeDashboard:
                     self.fig_dual.layout.xaxis2.range = [0, max_freq_span]
                     self.fig_dual.layout.yaxis2.title = f"Mag ({unit_name})"
 
-                # 7. Update Live Readouts
+                # 6. Update Live Readouts
                 if len(voltages) > 0:
                     vpp = np.max(voltages) - np.min(voltages)
                     self.readout_vpp.value = f"<span style='color: #00FFCC; font-family: monospace; font-size: 15px; font-weight: bold;'>Live Vpp: {vpp:.2f} V</span>"
@@ -1485,13 +1495,59 @@ class OscilloscopeOverlay(Overlay):
         self.fft = StreamingFFT(self, fft_points=fft_points)
         self.wavegen = AD3SignalGenerator()
 
+    def capture_both(
+        self,
+        unit: str = "dBV",
+        crop_startup_samples: int = 0
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Synchronously captures both Time-Domain and Frequency-Domain frames without deadlock.
+        Primes both S2MM DMA channels simultaneously before waiting for hardware burst completion.
+        
+        :param unit: Spectrum magnitude unit ('dBV', 'dBFS', 'Linear').
+        :param crop_startup_samples: Number of startup edge samples to discard from time series.
+        :return: (voltages_time, freqs_hz, mags_freq)
+        """
+        # 1. Queue both DMA channels concurrently (Non-blocking)
+        self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+        self.fft.dma.recvchannel.transfer(self.fft._buffer)
+
+        # 2. Wait for both transfers to complete
+        self.xadc.dma.recvchannel.wait()
+        self.fft.dma.recvchannel.wait()
+
+        # 3. Process Time-Domain raw data (12-bit left-aligned to 16 bits -> 0V to 3.3V)
+        raw_time = np.array(self.xadc._buffer)
+        voltages = (raw_time >> 4) * (3.3 / 4095.0)
+        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
+            voltages = voltages[crop_startup_samples:]
+
+        # 4. Process Frequency-Domain raw data (single-sided 1024 bins from CORDIC)
+        raw_fft = np.array(self.fft._buffer, copy=True)
+        raw_half = raw_fft[:self.fft.num_bins].astype(np.float64)
+        linear_volts = (raw_half / 32768.0) * 3.3
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half, 1.0) / 65535.0)
+        elif unit_clean == "LINEAR":
+            mags = linear_volts
+        else:
+            raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
+
+        return voltages, self.fft.freq_axis, mags
+
     def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
         """Trigger a Time-Domain DMA capture and return a NumPy array of voltages."""
-        return self.xadc.capture(crop_startup_samples=crop_startup_samples)
+        voltages, _, _ = self.capture_both(crop_startup_samples=crop_startup_samples)
+        return voltages
 
     def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
         """Trigger a Frequency-Domain DMA capture and return (frequencies_hz, magnitudes)."""
-        return self.fft.capture_spectrum(unit=unit)
+        _, freqs, mags = self.capture_both(unit=unit)
+        return freqs, mags
 
     def dashboard(self, display_window: int = 1024):
         """
@@ -1501,6 +1557,7 @@ class OscilloscopeOverlay(Overlay):
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
+            fft_points=self.fft_points,
             display_window=display_window
         )
         dash.display()

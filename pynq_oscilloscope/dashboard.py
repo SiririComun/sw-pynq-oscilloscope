@@ -18,7 +18,13 @@ class OscilloscopeDashboard:
     Integrates FPGA Hardware Triggering, 1 MSPS DMA acquisition, 2048-pt PL FFT, and AD3 wavegen.
     """
 
-    def __init__(self, overlay=None, packet_size: int = 16384, fft_points: int = 2048, display_window: int = 1024):
+    def __init__(
+        self,
+        overlay=None,
+        packet_size: int = 16384,
+        fft_points: int = 2048,
+        display_window: int = 1024
+    ):
         self.overlay = overlay
         self.packet_size = packet_size
         self.fft_points = fft_points
@@ -303,25 +309,29 @@ class OscilloscopeDashboard:
                     self.trigger.set_edge(self.trig_edge_dropdown.value)
                     self.trigger.set_threshold(float(self.trig_level_slider.value))
 
-                # 3. Capture Time Domain (DMA 0)
-                if self.xadc:
-                    voltages = self.xadc.capture(crop_startup_samples=0)
-                else:
-                    t = np.linspace(0, 0.016, self.packet_size)
-                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
-
-                # 4. Capture Frequency Domain from PL FFT (DMA 1)
+                # 3. Synchronized Dual DMA Capture (Prevents Broadcaster Deadlock)
                 unit_name = self.fft_unit_dropdown.value
-                if self.fft:
+                if self.overlay and hasattr(self.overlay, "capture_both"):
+                    voltages, freqs, mags = self.overlay.capture_both(unit=unit_name)
+                elif self.xadc and self.fft:
+                    self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+                    self.fft.dma.recvchannel.transfer(self.fft._buffer)
+                    self.xadc.dma.recvchannel.wait()
+                    self.fft.dma.recvchannel.wait()
+                    raw_time = np.array(self.xadc._buffer)
+                    voltages = (raw_time >> 4) * (3.3 / 4095.0)
                     freqs, mags = self.fft.capture_spectrum(unit=unit_name)
                 else:
+                    # Simulation fallback
+                    t = np.linspace(0, 0.016, self.packet_size)
+                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
                     freqs = np.linspace(0, 500000, 1024)
                     mags = -60.0 + 40.0 * np.exp(-((freqs - self.freq_slider.value) / 1500.0) ** 2)
 
                 # Peak frequency tracking
                 peak_f, peak_m = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=500.0)
 
-                # 5. Time Domain Window Slicing
+                # 4. Time Domain Window Slicing
                 if self.autorange_toggle.value:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
@@ -336,7 +346,7 @@ class OscilloscopeDashboard:
                 trig_v = float(self.trig_level_slider.value)
                 max_freq_span = float(self.fft_span_dropdown.value)
 
-                # 6. Atomic Canvas Batch Updates
+                # 5. Atomic Canvas Batch Updates
                 # Update Tab 1: Scope
                 with self.fig_scope.batch_update():
                     self.fig_scope.data[0].x = time_axis
@@ -372,7 +382,7 @@ class OscilloscopeDashboard:
                     self.fig_dual.layout.xaxis2.range = [0, max_freq_span]
                     self.fig_dual.layout.yaxis2.title = f"Mag ({unit_name})"
 
-                # 7. Update Live Readouts
+                # 6. Update Live Readouts
                 if len(voltages) > 0:
                     vpp = np.max(voltages) - np.min(voltages)
                     self.readout_vpp.value = f"<span style='color: #00FFCC; font-family: monospace; font-size: 15px; font-weight: bold;'>Live Vpp: {vpp:.2f} V</span>"
