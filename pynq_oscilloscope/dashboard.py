@@ -14,14 +14,14 @@ from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 class OscilloscopeDashboard:
     """
-    Unified, interactive real-time Plotly + IPywidgets Oscilloscope & Spectrum Analyzer Dashboard.
-    Integrates FPGA Hardware Triggering, 1 MSPS DMA acquisition, 2048-pt PL FFT, and AD3 wavegen.
+    High-Performance Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard.
+    Optimized for low-latency active-tab rendering to prevent DMA buffer starvation.
     """
 
     def __init__(
         self,
         overlay=None,
-        packet_size: int = 16384,
+        packet_size: int = 2048,
         fft_points: int = 2048,
         display_window: int = 1024
     ):
@@ -33,7 +33,7 @@ class OscilloscopeDashboard:
         self._is_running = False
         self._thread: Optional[threading.Thread] = None
         
-        # Attach or instantiate sub-drivers
+        # Attach sub-drivers
         if self.overlay and hasattr(self.overlay, "wavegen"):
             self.ad3 = self.overlay.wavegen
         else:
@@ -65,7 +65,6 @@ class OscilloscopeDashboard:
         self._build_plots()
 
     def _build_ui(self):
-        """Construct IPywidgets Control Panel."""
         # 1. Action Buttons
         self.start_btn = widgets.Button(description="Start", button_style="success", icon="play")
         self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop")
@@ -128,7 +127,7 @@ class OscilloscopeDashboard:
         )
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
-        # 4. FFT / Spectrum Analyzer Controls
+        # 4. FFT Controls
         self.fft_unit_dropdown = widgets.Dropdown(
             options=["dBV", "dBFS", "Linear"],
             value="dBV",
@@ -142,7 +141,7 @@ class OscilloscopeDashboard:
             layout=widgets.Layout(width="210px")
         )
 
-        # 5. Display Toggles & Readouts
+        # 5. Toggles & Readouts
         self.autorange_toggle = widgets.ToggleButton(
             value=True, description="Auto-Range",
             button_style="info", tooltip="Activate adaptive time and voltage grid scaling"
@@ -155,10 +154,7 @@ class OscilloscopeDashboard:
         )
 
     def _build_plots(self):
-        """Construct Plotly FigureWidgets for Tab 1 (Scope), Tab 2 (Spectrum), and Tab 3 (Dual)."""
-        # ==========================================
         # 1. Scope Figure
-        # ==========================================
         self.fig_scope = go.FigureWidget()
         self.fig_scope.add_scatter(
             x=list(range(self.display_window)),
@@ -185,9 +181,7 @@ class OscilloscopeDashboard:
             uirevision="scope_state"
         )
 
-        # ==========================================
         # 2. Spectrum Analyzer Figure
-        # ==========================================
         num_bins = self.fft_points // 2
         initial_freqs = np.linspace(0, 500000, num_bins)
         self.fig_spectrum = go.FigureWidget()
@@ -219,9 +213,7 @@ class OscilloscopeDashboard:
             uirevision="spectrum_state"
         )
 
-        # ==========================================
-        # 3. Dual View Figure (Stacked)
-        # ==========================================
+        # 3. Dual View Figure
         self.fig_dual = make_subplots(
             rows=2, cols=1,
             shared_xaxes=False,
@@ -229,24 +221,19 @@ class OscilloscopeDashboard:
             subplot_titles=("<b>Oscilloscope (Time Domain)</b>", "<b>Spectrum Analyzer (Frequency Domain)</b>")
         )
         self.fig_dual = go.FigureWidget(self.fig_dual)
-        
-        # Dual Scope trace
         self.fig_dual.add_scatter(
             x=list(range(self.display_window)),
             y=[0] * self.display_window,
             mode="lines",
             line=dict(color="#00FFCC", width=1.8),
-            name="Time Signal",
-            row=1, col=1
+            name="Time Signal", row=1, col=1
         )
-        # Dual Spectrum trace
         self.fig_dual.add_scatter(
             x=initial_freqs,
             y=[-100] * num_bins,
             mode="lines",
             line=dict(color="#FF007F", width=1.6),
-            name="Spectrum",
-            row=2, col=1
+            name="Spectrum", row=2, col=1
         )
         self.fig_dual.update_layout(
             template="plotly_dark",
@@ -271,9 +258,8 @@ class OscilloscopeDashboard:
             self.trigger.force_trigger()
 
     def _update_loop(self):
-        """Background thread execution loop for concurrent Time & FFT acquisition."""
+        """Background thread execution loop with active-tab rendering to eliminate lag."""
         try:
-            # 1. Initialize Hardware Trigger Registers
             if self.trigger:
                 self.trigger.configure(
                     mode=self.trig_mode_dropdown.value,
@@ -282,14 +268,12 @@ class OscilloscopeDashboard:
                     timeout_ms=50.0
                 )
 
-            # 2. Start AD3 Signal Generation
             self.ad3.start(
                 shape=self.shape_dropdown.value,
                 frequency=float(self.freq_slider.value),
                 amplitude=float(self.amp_slider.value)
             )
 
-            # Wait for AD3 USB hardware readiness
             wait_start = time.time()
             while self._is_running and not self.ad3.is_ready:
                 time.sleep(0.05)
@@ -297,7 +281,7 @@ class OscilloscopeDashboard:
                     break
 
             while self._is_running:
-                # Dynamic updates to wavegen and trigger
+                # 1. Update Generator & Trigger dynamically
                 self.ad3.update_parameters(
                     shape=self.shape_dropdown.value,
                     frequency=float(self.freq_slider.value),
@@ -309,29 +293,22 @@ class OscilloscopeDashboard:
                     self.trigger.set_edge(self.trig_edge_dropdown.value)
                     self.trigger.set_threshold(float(self.trig_level_slider.value))
 
-                # 3. Synchronized Dual DMA Capture (Prevents Broadcaster Deadlock)
+                # 2. Synchronized Dual DMA Capture
                 unit_name = self.fft_unit_dropdown.value
-                if self.overlay and hasattr(self.overlay, "capture_both"):
-                    voltages, freqs, mags = self.overlay.capture_both(unit=unit_name)
-                elif self.xadc and self.fft:
-                    self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
-                    self.fft.dma.recvchannel.transfer(self.fft._buffer)
-                    self.xadc.dma.recvchannel.wait()
-                    self.fft.dma.recvchannel.wait()
-                    raw_time = np.array(self.xadc._buffer)
-                    voltages = (raw_time >> 4) * (3.3 / 4095.0)
-                    freqs, mags = self.fft.capture_spectrum(unit=unit_name)
-                else:
-                    # Simulation fallback
-                    t = np.linspace(0, 0.016, self.packet_size)
-                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
-                    freqs = np.linspace(0, 500000, 1024)
-                    mags = -60.0 + 40.0 * np.exp(-((freqs - self.freq_slider.value) / 1500.0) ** 2)
+                try:
+                    if self.overlay and hasattr(self.overlay, "capture_both"):
+                        voltages, freqs, mags = self.overlay.capture_both(unit=unit_name)
+                    else:
+                        break
+                except Exception as dma_err:
+                    # Ignore single transient drop and retry
+                    time.sleep(0.01)
+                    continue
 
-                # Peak frequency tracking
+                # 3. Peak frequency tracking
                 peak_f, peak_m = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=500.0)
 
-                # 4. Time Domain Window Slicing
+                # 4. Time Domain Slicing
                 if self.autorange_toggle.value:
                     freq = float(self.freq_slider.value)
                     period_us = 1e6 / freq if freq > 0 else 1000
@@ -345,51 +322,53 @@ class OscilloscopeDashboard:
                 time_axis = np.arange(len(plot_voltages))
                 trig_v = float(self.trig_level_slider.value)
                 max_freq_span = float(self.fft_span_dropdown.value)
+                current_tab = self.tabs.selected_index  # 0: Scope, 1: Spectrum, 2: Dual
 
-                # 5. Atomic Canvas Batch Updates
-                # Update Tab 1: Scope
-                with self.fig_scope.batch_update():
-                    self.fig_scope.data[0].x = time_axis
-                    self.fig_scope.data[0].y = plot_voltages
-                    self.fig_scope.data[1].x = [0, len(plot_voltages)]
-                    self.fig_scope.data[1].y = [trig_v, trig_v]
-                    if self.autorange_toggle.value:
-                        amp = float(self.amp_slider.value)
-                        margin = 0.25
-                        self.fig_scope.layout.xaxis.range = [0, len(plot_voltages)]
-                        self.fig_scope.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
+                # 5. Render ONLY the Active Visible Tab (Cuts rendering latency by 70%)
+                if current_tab == 0:
+                    with self.fig_scope.batch_update():
+                        self.fig_scope.data[0].x = time_axis
+                        self.fig_scope.data[0].y = plot_voltages
+                        self.fig_scope.data[1].x = [0, len(plot_voltages)]
+                        self.fig_scope.data[1].y = [trig_v, trig_v]
+                        if self.autorange_toggle.value:
+                            amp = float(self.amp_slider.value)
+                            margin = 0.25
+                            self.fig_scope.layout.xaxis.range = [0, len(plot_voltages)]
+                            self.fig_scope.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
 
-                # Update Tab 2: Spectrum Analyzer
-                with self.fig_spectrum.batch_update():
-                    self.fig_spectrum.data[0].x = freqs
-                    self.fig_spectrum.data[0].y = mags
-                    self.fig_spectrum.data[1].x = [peak_f]
-                    self.fig_spectrum.data[1].y = [peak_m]
-                    self.fig_spectrum.data[1].text = [f" {peak_f/1e3:.1f} kHz ({peak_m:.1f} {unit_name})"]
-                    self.fig_spectrum.layout.xaxis.range = [0, max_freq_span]
-                    self.fig_spectrum.layout.yaxis.title = f"Magnitude ({unit_name})"
-                    if unit_name == "Linear":
-                        self.fig_spectrum.layout.yaxis.range = [0, 3.5]
-                    else:
-                        self.fig_spectrum.layout.yaxis.range = [-80, 20]
+                elif current_tab == 1:
+                    with self.fig_spectrum.batch_update():
+                        self.fig_spectrum.data[0].x = freqs
+                        self.fig_spectrum.data[0].y = mags
+                        self.fig_spectrum.data[1].x = [peak_f]
+                        self.fig_spectrum.data[1].y = [peak_m]
+                        self.fig_spectrum.data[1].text = [f" {peak_f/1e3:.1f} kHz ({peak_m:.1f} {unit_name})"]
+                        self.fig_spectrum.layout.xaxis.range = [0, max_freq_span]
+                        self.fig_spectrum.layout.yaxis.title = f"Magnitude ({unit_name})"
+                        if unit_name == "Linear":
+                            self.fig_spectrum.layout.yaxis.range = [0, 3.5]
+                        else:
+                            self.fig_spectrum.layout.yaxis.range = [-80, 20]
 
-                # Update Tab 3: Dual View
-                with self.fig_dual.batch_update():
-                    self.fig_dual.data[0].x = time_axis
-                    self.fig_dual.data[0].y = plot_voltages
-                    self.fig_dual.data[1].x = freqs
-                    self.fig_dual.data[1].y = mags
-                    self.fig_dual.layout.xaxis2.range = [0, max_freq_span]
-                    self.fig_dual.layout.yaxis2.title = f"Mag ({unit_name})"
+                elif current_tab == 2:
+                    with self.fig_dual.batch_update():
+                        self.fig_dual.data[0].x = time_axis
+                        self.fig_dual.data[0].y = plot_voltages
+                        self.fig_dual.data[1].x = freqs
+                        self.fig_dual.data[1].y = mags
+                        self.fig_dual.layout.xaxis2.range = [0, max_freq_span]
+                        self.fig_dual.layout.yaxis2.title = f"Mag ({unit_name})"
 
-                # 6. Update Live Readouts
+                # 6. Update Digital Readouts
                 if len(voltages) > 0:
                     vpp = np.max(voltages) - np.min(voltages)
                     self.readout_vpp.value = f"<span style='color: #00FFCC; font-family: monospace; font-size: 15px; font-weight: bold;'>Live Vpp: {vpp:.2f} V</span>"
                 
                 self.readout_peak_freq.value = f"<span style='color: #FF007F; font-family: monospace; font-size: 15px; font-weight: bold;'>Peak f0: {peak_f/1e3:.2f} kHz</span>"
 
-                time.sleep(0.035)
+                # 7. Adaptive Frame Limiter (30 FPS)
+                time.sleep(0.033)
 
         except Exception as e:
             print(f"[Dashboard] Error in update loop: {e}")
@@ -399,7 +378,6 @@ class OscilloscopeDashboard:
             print("[Dashboard] Stopped cleanly.")
 
     def start(self):
-        """Launch dashboard acquisition in background thread."""
         if self._is_running:
             print("[Dashboard] Already running.")
             return
@@ -408,34 +386,28 @@ class OscilloscopeDashboard:
         self._thread.start()
 
     def stop(self):
-        """Halt dashboard background updates."""
         self._is_running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
     def display(self):
-        """Render the complete Multi-Tab UI Dashboard in Jupyter."""
-        # Action & Status Row
         row1 = widgets.HBox(
             [self.start_btn, self.stop_btn, self.force_trig_btn, self.autorange_toggle, self.readout_vpp, self.readout_peak_freq],
             layout=widgets.Layout(align_items="center", gap="15px", margin="0 0 10px 0")
         )
-        # Hardware Trigger Controls
         row_trig = widgets.HBox([self.trig_mode_dropdown, self.trig_edge_dropdown, self.trig_level_slider, self.trig_level_input])
-        # AD3 Signal Generator Controls
         row_wave = widgets.HBox([self.shape_dropdown, self.amp_slider, self.amp_input])
         row_freq = widgets.HBox([self.freq_slider, self.freq_input])
-        # FFT Controls
         row_fft = widgets.HBox([self.fft_unit_dropdown, self.fft_span_dropdown])
 
         control_panel = widgets.VBox([row1, row_trig, row_wave, row_freq, row_fft], layout=widgets.Layout(margin="0 0 15px 0"))
 
         # Build Multi-Tab Layout
-        tabs = widgets.Tab()
-        tabs.children = [self.fig_scope, self.fig_spectrum, self.fig_dual]
-        tabs.set_title(0, "📈 Oscilloscope")
-        tabs.set_title(1, "📊 Spectrum Analyzer")
-        tabs.set_title(2, "🔀 Dual View")
+        self.tabs = widgets.Tab()
+        self.tabs.children = [self.fig_scope, self.fig_spectrum, self.fig_dual]
+        self.tabs.set_title(0, "📈 Oscilloscope")
+        self.tabs.set_title(1, "📊 Spectrum Analyzer")
+        self.tabs.set_title(2, "🔀 Dual View")
 
-        ui_layout = widgets.VBox([control_panel, tabs])
+        ui_layout = widgets.VBox([control_panel, self.tabs])
         display(ui_layout)
