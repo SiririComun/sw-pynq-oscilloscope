@@ -81,6 +81,20 @@ This repository adopts the **canonical PYNQ Custom Overlay pattern** (`Oscillosc
 
 ---
 
+## 🔌 Hardware Setup & Wiring
+
+1. **AD3 USB Connection:**
+   * Plug the Analog Discovery 3 USB cable into the large rectangular **USB HOST** port on the PYNQ-Z2 board (adjacent to Ethernet).
+2. **USB Cable Quality:**
+   * Ensure you use a **Data + Power USB-C cable** (charging-only cables will not be detected by Linux).
+3. **Power Supply:**
+   * Power the AD3 with an external **5V auxiliary power supply** to prevent brownouts under load.
+4. **Analog Signals:**
+   * Connect a jumper wire from **Wavegen 1 (W1)** on the AD3 to **Analog Input A0** on the PYNQ-Z2 Arduino header.
+   * Connect an AD3 **GND** pin to a PYNQ-Z2 **GND** pin.
+
+---
+
 ## 🚀 Quick Start & Installation
 
 ### 1. Install Package from PyPI
@@ -144,7 +158,6 @@ ol.close()
 | **`02_xadc_getting_started.ipynb`** | Demonstrates `OscilloscopeOverlay`, hardware triggering, and time-domain DMA capture. | `OscilloscopeOverlay`, `HardwareTrigger` |
 | **`03_oscilloscope_dashboard.ipynb`** | **Main Application:** Deploys the complete interactive Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard. | `OscilloscopeOverlay` |
 | **`04_fft_spectrum_analyzer.ipynb`** | **Spectrum Analyzer Guide:** Captures PL hardware FFT spectra, analyzes harmonics (Sine vs. Square). | `OscilloscopeOverlay`, `StreamingFFT` |
-| **`05_fft_diagnostic_test.ipynb`** | **Diagnostic Suite:** Automated unit tests measuring DMA throughput (~290 FPS) and FFT accuracy. | `OscilloscopeOverlay`, `StreamingFFT` |
 
 ---
 
