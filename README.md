@@ -1,19 +1,19 @@
-# Real-Time 1 MSPS Hardware-Triggered PYNQ Oscilloscope
+# Real-Time 1 MSPS Hardware-Triggered Oscilloscope & Spectrum Analyzer
 
 [![PyPI Version](https://img.shields.io/pypi/v/pynq-oscilloscope.svg)](https://pypi.org/project/pynq-oscilloscope/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.1.0-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
+[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.2.0-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
 [![Board Support](https://img.shields.io/badge/Board-PYNQ--Z2-green.svg)](https://tul.com.tw/ProductsPYNQ-Z2.html)
 
-A high-performance, dark-mode real-time Oscilloscope software stack running natively on PYNQ Linux platforms. 
+A high-performance, dark-mode real-time Oscilloscope and Spectrum Analyzer software stack running natively on PYNQ Linux platforms. 
 
-Features **sub-microsecond hardware-level edge triggering** (`axis_trigger_unit`), **1 MSPS XADC streaming via AXI DMA** direct to DDR memory, and non-blocking analog signal generation with the **Digilent Analog Discovery 3** via `pydwf`.
+Features **sub-microsecond hardware edge triggering** (`axis_trigger_unit`), **FPGA-accelerated 2048-point FFT & CORDIC magnitude extraction** in Programmable Logic, **dual AXI DMA streaming direct to DDR memory at ~290 FPS**, and non-blocking analog signal generation with the **Digilent Analog Discovery 3** via `pydwf`.
 
 ---
 
 ## 🏛 System Architecture
 
-This repository adopts the **canonical PYNQ Custom Overlay pattern** (`OscilloscopeOverlay`). It automatically pulls its compiled hardware bitstream and metadata from GitHub Releases (or loads local custom `.bit` builds) and encapsulates the DMA receiver, AXI-Lite trigger registers, and wavegen into a unified Python object.
+This repository adopts the **canonical PYNQ Custom Overlay pattern** (`OscilloscopeOverlay`). It automatically pulls its compiled hardware bitstream and metadata from GitHub Releases (or loads local custom `.bit` builds) and encapsulates the Dual DMA receivers, AXI-Lite trigger registers, and wavegen into a unified Python object.
 
 ```
  [ Analog Discovery 3 (W1) ] ──(Analog Jumper Wire)──> [ PYNQ-Z2 Header (A0) ]
@@ -21,54 +21,63 @@ This repository adopts the **canonical PYNQ Custom Overlay pattern** (`Oscillosc
         (pydwf SDK)                                     (XADC 1 MSPS AXI-Stream)
               │                                                     │
               ▼                                                     ▼
- [ AD3SignalGenerator ]                              [ axis_trigger_unit IP ]
-              │                                     (Edge, Threshold, Auto Timeout)
+    [ AD3SignalGenerator ]                               [ axis_trigger_unit IP ]
               │                                                     │
-              │                                                     ▼
-              │                                          [ AXI DMA S2MM Engine ]
+              │                                          [ tlast_generator (2048 pts) ]
               │                                                     │
-              └───────────────────────┬─────────────────────────────┘
-                                      │
-                                      ▼
-                           [ OscilloscopeOverlay ]
-                   (Subclasses pynq.Overlay with sub-drivers)
-                    ├── .trigger  (HardwareTrigger AXI-Lite)
-                    ├── .xadc     (StreamingXADC DMA Driver)
-                    ├── .wavegen  (AD3SignalGenerator)
-                    └── .dashboard() (Interactive Plotly Canvas)
+              │                                          [ axis_broadcaster ]
+              │                                    ┌────────────────┴────────────────┐
+              │                                    ▼ (Time Stream)                   ▼ (Signed Stream)
+              │                           [ AXI DMA 0 (Time) ]              [ xfft (2048-pt BFP) ]
+              │                                    │                                 │
+              │                                    │                        [ CORDIC (Magnitude) ]
+              │                                    │                                 │
+              │                                    │                        [ AXI DMA 1 (FFT) ]
+              │                                    │                                 │
+              └────────────────────────────────────┴────────────────┬────────────────┘
+                                                                    ▼
+                                                         [ OscilloscopeOverlay ]
+                                                  ├── .trigger  (HardwareTrigger AXI-Lite)
+                                                  ├── .xadc     (StreamingXADC DMA Driver)
+                                                  ├── .fft      (StreamingFFT PL DMA Driver)
+                                                  ├── .wavegen  (AD3SignalGenerator)
+                                                  └── .dashboard() (Interactive Multi-Tab Instrument)
 ```
 
 ---
 
 ## 🖥 Interactive Dashboard UI Guide
 
-![Real-Time 1 MSPS PYNQ Oscilloscope Dashboard](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/dashboard_screenshot.png)
+![Real-Time Oscilloscope & Spectrum Analyzer Dashboard](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/dashboard_screenshot.png)
 
-### 1. Control & Action Bar (Row 1)
-* **`▶ Start`:** Initializes the background acquisition worker, turns on AD3 waveform generation, arms the FPGA trigger, and begins DMA streaming.
+### 1. Action & Status Bar (Row 1)
+* **`▶ Start`:** Initializes background acquisition, arms the FPGA trigger, and streams Time & Frequency domains concurrently at up to 30 FPS.
 * **`■ Stop`:** Cleanly halts the acquisition loop, disarms the trigger, stops the AD3 wavegen, and releases device handles.
 * **`⚡ Force / Arm`:** 
-  * In **Single Mode**, re-arms the FPGA trigger unit to capture the next transient event.
-  * In any mode, pulses bit 4 of `CONTROL_REG` (`0x00`) to force an immediate hardware frame capture.
-* **`Auto-Range` (Toggle):** Dynamically scales the visible horizontal timebase (showing 5–10 signal periods) and adapts the vertical Y-axis limits ($1.65\,\text{V} \pm \text{Amplitude}$ with margin).
-* **`Live Vpp`:** Real-time peak-to-peak voltage calculation updated live ($V_{pp} = V_{\max} - V_{\min}$).
+  * In **Single Mode**, re-arms the trigger to capture the next single transient event.
+  * In **Auto/Normal Mode**, forces an immediate hardware frame capture.
+* **`🗑 Clear Log`:** Instantly clears the console output area below the dashboard.
+* **`Auto-Range` (Toggle):** Dynamically scales the horizontal timebase (5–10 signal periods) and adapts the vertical Y-axis limits.
+* **`Live Vpp` & `Peak f0`:** Real-time peak-to-peak voltage calculation and automated fundamental frequency tracking.
 
 ### 2. Hardware Trigger Controls (Row 2)
 * **`Trig Mode`:**
-  * **`Auto`:** Continuous live stream. Locks onto trigger edges when present; if no edge occurs within 50 ms (e.g., disconnected input or threshold out of range), the hardware auto-timeout forces a frame capture so the display never freezes.
-  * **`Normal`:** Strictly edge-triggered. The FPGA *only* captures and transfers data to DDR memory when a valid trigger event occurs.
-  * **`Single`:** Captures **one single frame** on the first trigger event and freezes the display. Re-arm by clicking **`⚡ Force / Arm`**.
-* **`Trig Edge` (`Rising` / `Falling`):** Configures whether the FPGA comparator triggers on the upward slope ($\nearrow$) or downward slope ($\searrow$).
-* **`Trig Level` (Slider & Numeric Box):** Sets the FPGA voltage threshold register (`0x08`) between $0.0\,\text{V}$ and $3.3\,\text{V}$ with client-side zero-latency linking (`widgets.jslink`).
+  * **`Auto`:** Continuous live stream. Locks onto trigger edges; if no edge occurs within 50 ms (disconnected input or threshold out of range), the 50 ms hardware timeout forces a capture so the display never freezes.
+  * **`Normal`:** Strictly edge-triggered. Freezes and holds the last frame when no trigger edge is present.
+  * **`Single`:** Captures **one single frame** on the first trigger event and freezes. Re-arm by clicking **`⚡ Force / Arm`**.
+* **`Trig Edge` (`Rising` / `Falling`):** Configures the FPGA voltage comparator slope.
+* **`Trig Level` (Slider & Numeric Box):** Sets the FPGA threshold register (`0x08`) between $0.0\,\text{V}$ and $3.3\,\text{V}$ with client-side zero-latency linking (`widgets.jslink`).
 
-### 3. AD3 Signal Generator Controls (Rows 3 & 4)
-* **`Waveform` (`Sine`, `Triangle`, `Square`):** Selects the DAC output waveform on AD3 Wavegen Channel 1 (W1).
-* **`Amp Slider / Exact Amp`:** Adjusts the signal amplitude in Volts ($0.1\,\text{V}$ to $1.5\,\text{V}$).
-* **`Freq Slider / Exact Freq`:** Sets the generation frequency in Hertz ($100\,\text{Hz}$ to $1\,\text{MHz}$).
+### 3. AD3 Signal Generator & FFT Controls (Rows 3, 4 & 5)
+* **`Waveform` (`Sine`, `Triangle`, `Square`):** Selects DAC output waveform on AD3 W1.
+* **`Amp` & `Freq` Sliders:** Adjusts output amplitude ($0.1\,\text{V} - 1.5\,\text{V}$) and frequency ($100\,\text{Hz} - 250\,\text{kHz}$) on the fly.
+* **`FFT Unit` (`dBV`, `dBFS`, `Linear`):** Selects logarithmic power or linear amplitude for the spectrum analyzer.
+* **`Span / Zoom` (`Full 500 kHz`, `100 kHz`, `20 kHz`):** Zooms the frequency horizontal axis.
 
-### 4. Interactive Plotly Canvas
-* **Cyan Trace (`A0 (Analog In)`):** 1 MSPS analog signal stream read directly from DDR memory. Sample $[0]$ ($t=0\,\mu\text{s}$) is hardware-aligned to the trigger edge.
-* **Orange Dashed Trace (`Trigger Level`):** Live visual threshold line reflecting the FPGA trigger register level.
+### 4. Multi-Tab Instrument Display
+* **📈 Tab 1 — Oscilloscope:** 1 MSPS time-domain trace + live orange dashed trigger threshold line.
+* **📊 Tab 2 — Spectrum Analyzer:** Real-time PL FFT spectrum with cyan diamond fundamental frequency marker ($f_0$).
+* **🔀 Tab 3 — Dual View:** Synchronized stacked display showing Time Domain (top) and Frequency Domain (bottom) simultaneously.
 
 ---
 
@@ -89,26 +98,18 @@ This repository adopts the **canonical PYNQ Custom Overlay pattern** (`Oscillosc
 ## 🚀 Quick Start & Installation
 
 ### 1. Install Package from PyPI
-Connect to your PYNQ board via SSH or Jupyter Terminal and run:
-
 ```bash
 pip install --upgrade pynq-oscilloscope
 ```
 
 ### 2. Copy Example Notebooks to Jupyter Workspace
-Copy this project's notebooks into `/home/xilinx/jupyter_notebooks/pynq_oscilloscope/`:
-
 ```bash
 pynq-oscilloscope-get-notebooks
 ```
 
-### 3. Install Digilent AD3 Drivers
-Run the automated environment setup inside Python or a Jupyter cell:
-
+### 3. Install Digilent AD3 Drivers (One-Time Setup)
 ```python
 from pynq_oscilloscope import install_ad3_drivers
-
-# Downloads Adept Runtime + WaveForms SDK and configures USB permissions
 install_ad3_drivers()
 ```
 
@@ -116,40 +117,34 @@ install_ad3_drivers()
 
 ## 💻 Python API Usage
 
-### 1. Launch Interactive Dashboard in 2 Lines (Default Cloud Fetch)
+### 1. Launch Interactive Dashboard in 2 Lines
 ```python
 from pynq_oscilloscope import OscilloscopeOverlay
 
-# Automatically identifies board (PYNQ-Z2), downloads v1.1.0 release, and loads FPGA
+# Automatically downloads v1.2.0 release and programs FPGA
 ol = OscilloscopeOverlay()
 
-# Launch dark-mode interactive Plotly + IPywidgets dashboard
+# Launch dark-mode interactive Plotly + IPywidgets instrument
 app = ol.dashboard()
 ```
 
-### 2. Load Local Custom Bitstream (Offline / Development)
+### 2. Programmatic Time & Frequency Domain DMA Capture
 ```python
 from pynq_oscilloscope import OscilloscopeOverlay
-
-# Load a local bitstream while preserving all driver hooks and UI tools
-ol = OscilloscopeOverlay("./pynq_z2.bit")
-app = ol.dashboard()
-```
-
-### 3. Programmatic Hardware Trigger & DMA Capture
-```python
-from pynq_oscilloscope import OscilloscopeOverlay
+from pynq_oscilloscope.fft_dma import StreamingFFT
 
 ol = OscilloscopeOverlay()
 
-# Configure FPGA Trigger: Rising Edge @ 1.65V with 50 ms Auto-timeout
-ol.trigger.configure(mode="Auto", edge="Rising", threshold_volts=1.65, timeout_ms=50.0)
+# Configure FPGA Trigger: Rising Edge @ 1.65V
+ol.trigger.configure(mode="Auto", edge="Rising", threshold_volts=1.65)
 
-# Capture 16,384 samples (Sample [0] is guaranteed hardware-aligned to trigger point!)
-voltages = ol.capture()
-print(f"Captured {len(voltages)} samples. Min: {voltages.min():.2f}V, Max: {voltages.max():.2f}V")
+# Synchronous capture of both Time and Frequency domains (0 ms dead time)
+voltages, freqs, mags = ol.capture_both(unit="dBV")
 
-# Clean release of memory buffers
+peak_f, peak_m = StreamingFFT.get_peak_frequency(freqs, mags)
+print(f"Captured {len(voltages)} time samples. Vpp: {voltages.max()-voltages.min():.2f}V")
+print(f"Dominant Peak: {peak_f/1e3:.2f} kHz @ {peak_m:.1f} dBV")
+
 ol.close()
 ```
 
@@ -159,9 +154,10 @@ ol.close()
 
 | Notebook | Description | Key Modules Used |
 | :--- | :--- | :--- |
-| **`01_ad3_getting_started.ipynb`** | Verifies Digilent drivers and generates analog signals (Sine, Square, Triangle) in a non-blocking background worker. | `AD3SignalGenerator`, `check_usb_permissions` |
-| **`02_xadc_getting_started.ipynb`** | Demonstrates `OscilloscopeOverlay`, hardware register trigger configuration (`ol.trigger`), and DMA capture. | `OscilloscopeOverlay`, `HardwareTrigger` |
-| **`03_oscilloscope_dashboard.ipynb`** | **Main Application:** Deploys the complete interactive Plotly Oscilloscope with live trigger line, auto-ranging, and AD3 integration. | `OscilloscopeOverlay` |
+| **`01_ad3_getting_started.ipynb`** | Verifies Digilent drivers and generates analog waveforms in background worker. | `AD3SignalGenerator`, `check_usb_permissions` |
+| **`02_xadc_getting_started.ipynb`** | Demonstrates `OscilloscopeOverlay`, hardware triggering, and time-domain DMA capture. | `OscilloscopeOverlay`, `HardwareTrigger` |
+| **`03_oscilloscope_dashboard.ipynb`** | **Main Application:** Deploys the complete interactive Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard. | `OscilloscopeOverlay` |
+| **`04_fft_spectrum_analyzer.ipynb`** | **Spectrum Analyzer Guide:** Captures PL hardware FFT spectra, analyzes harmonics (Sine vs. Square). | `OscilloscopeOverlay`, `StreamingFFT` |
 
 ---
 

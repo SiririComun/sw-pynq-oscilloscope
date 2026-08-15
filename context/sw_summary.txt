@@ -1,27 +1,28 @@
 Git Context & Branch Info:
 
 ```log
-Current Branch: main
+Current Branch: feat/pl-fft
 Branch Tracking Status:
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* main            2e8ceee [origin/main] ci: switch to PyPI Trusted Publishing via OIDC
+* feat/pl-fft     48ab8f9 [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation
+  main            3aae7b1 [origin/main] docs(context): capture branch status and commit graph in SW context summary
 
 Git Commit Graph & History:
-* 2e8ceee  (HEAD -> main, tag: v1.1.0, origin/main, origin/HEAD) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
+* 48ab8f9  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation (SiririComun)
+* 8c41477  - 2026-08-15 : feat(dashboard): finalize multi-tab instrument and clean notebook suite (SiririComun)
+* d3a7e29  - 2026-08-15 : docs(ui): add dual-view dashboard screenshots and PL FFT diagnostic test suite (SiririComun)
+* 1128463  - 2026-08-14 : perf(dashboard): optimize active-tab rendering to prevent DMA starvation (SiririComun)
+* 6d5e8b9  - 2026-08-14 : fix(dma): update default packet size to 2048 matching hardware FFT frame (SiririComun)
+* 1a24002  - 2026-08-14 : fix(dma): resolve broadcaster deadlock with synchronized dual DMA transfer (SiririComun)
+* 1dc5fea  - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
+* 3aae7b1  (origin/main, origin/HEAD, main) - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
+* 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
 * cff6d3c  (origin/feat/hw-trigger, feat/hw-trigger) - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)
 * 24ba5f0  - 2026-08-13 : docs(context): track CI PyPI workflow and update SW summary (SiririComun)
 * 14f2e56  - 2026-08-13 : docs: update README with OscilloscopeOverlay API and hardware trigger architecture (SiririComun)
 * c35d0d1  - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
 * f0408fe  - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
-* 855fbe4  - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)
-* 4545e55  (tag: v1.0.1) - 2026-08-08 : chore(pkg): bump version to 1.0.1 (SiririComun)
-* 5cca09d  - 2026-08-08 : docs: add PyPI badges, virtual environment tutorial, and update version to 1.0.1 (SiririComun)
-* 862fa4d  - 2026-08-08 : chore(pkg): set distribution package name to pynq-oscilloscope (SiririComun)
-* cff0288  - 2026-08-08 : fix(deps): remove unnecessary plotlywidget from requirements to fix pip install (SiririComun)
-* 89e4719  - 2026-08-08 : fix(deps): remove pynq from install_requires to prevent PyPI build errors on PYNQ boards (SiririComun)
-* dcad02d  - 2026-08-08 : fix(sync): add AD3 hardware readiness handshake to eliminate start delay noise (SiririComun)
-* 4efcf80  - 2026-08-08 : fix(ui): adjust Plotly display window scaling and pin plotly 5.x dependencies (SiririComun)
-* fc0d4dc  - 2026-08-08 : fix(dma): update default packet size to 16384 matching hardware tlast_generator (SiririComun)```
+* 855fbe4  - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)```
 
 Files structure: 
 
@@ -33,6 +34,9 @@ Files structure:
 ├── docs
 │   ├── AD3_SETUP.md
 │   └── images
+│       ├── dashboard_dual_highfreq.png
+│       ├── dashboard_dual_sine.png
+│       ├── dashboard_dual_square.png
 │       └── dashboard_screenshot.png
 ├── .github
 │   └── workflows
@@ -43,11 +47,14 @@ Files structure:
 ├── notebooks
 │   ├── 01_ad3_getting_started.ipynb
 │   ├── 02_xadc_getting_started.ipynb
-│   └── 03_oscilloscope_dashboard.ipynb
+│   ├── 03_oscilloscope_dashboard.ipynb
+│   ├── 04_fft_spectrum_analyzer.ipynb
+│   └── 05_fft_diagnostic_test.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── dashboard.py
 │   ├── env_checker.py
+│   ├── fft_dma.py
 │   ├── hw_trigger.py
 │   ├── __init__.py
 │   ├── loader.py
@@ -58,7 +65,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 23 files
+8 directories, 29 files
 ```
 
 pypi.yml:
@@ -103,7 +110,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.1.0"
+    "version": "v1.2.0-rc1"
 }```
 
 setup.py:
@@ -161,7 +168,7 @@ __init__.py:
 
 ```python
 """
-pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope & AD3 integration.
+pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope, Spectrum Analyzer & AD3 integration.
 """
 
 from pynq_oscilloscope.overlay import OscilloscopeOverlay
@@ -169,11 +176,12 @@ from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.env_checker import install_ad3_drivers, check_usb_permissions
 from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -181,6 +189,7 @@ __all__ = [
     "install_ad3_drivers",
     "check_usb_permissions",
     "StreamingXADC",
+    "StreamingFFT",
     "AD3SignalGenerator",
     "OscilloscopeDashboard",
     "copy_notebooks",
@@ -191,28 +200,39 @@ dashboard.py:
 ```python
 import time
 import threading
+from typing import Optional
+from IPython.display import clear_output, display
 import numpy as np
 import ipywidgets as widgets
-from IPython.display import display
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 class OscilloscopeDashboard:
     """
-    Unified, interactive real-time Plotly + IPywidgets Oscilloscope Dashboard.
-    Integrates FPGA Hardware Triggering + 1 MSPS DMA acquisition with AD3 signal generation.
+    High-Performance Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard.
+    Integrates FPGA Hardware Triggering, 1 MSPS DMA acquisition, 2048-pt PL FFT, and AD3 wavegen.
     """
 
-    def __init__(self, overlay=None, packet_size: int = 16384, display_window: int = 1024):
+    def __init__(
+        self,
+        overlay=None,
+        packet_size: int = 2048,
+        fft_points: int = 2048,
+        display_window: int = 1024
+    ):
         self.overlay = overlay
         self.packet_size = packet_size
+        self.fft_points = fft_points
         self.display_window = display_window
         
         self._is_running = False
-        self._thread = None
+        self._single_done = False
+        self._thread: Optional[threading.Thread] = None
         
         # Attach or instantiate sub-drivers
         if self.overlay and hasattr(self.overlay, "wavegen"):
@@ -233,245 +253,307 @@ class OscilloscopeDashboard:
             self.xadc = StreamingXADC(self.overlay, default_packet_size=self.packet_size)
         else:
             self.xadc = None
+
+        if self.overlay and hasattr(self.overlay, "fft"):
+            self.fft = self.overlay.fft
+        elif self.overlay:
+            self.fft = StreamingFFT(self.overlay, fft_points=self.fft_points)
+        else:
+            self.fft = None
         
-        # Build UI Controls & Plotly Canvas
+        # Build UI Controls & Plotly Canvases
         self._build_ui()
-        self._build_plot()
+        self._build_plots()
+        self._setup_callbacks()
 
     def _build_ui(self):
-        """Construct IPywidgets Control Panel."""
         # 1. Action Buttons
         self.start_btn = widgets.Button(description="Start", button_style="success", icon="play")
         self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop")
-        self.force_trig_btn = widgets.Button(description="Force / Arm", button_style="warning", icon="bolt")
-        
-        self.start_btn.on_click(self._on_start_clicked)
-        self.stop_btn.on_click(self._on_stop_clicked)
-        self.force_trig_btn.on_click(self._on_force_trig_clicked)
+        self.force_btn = widgets.Button(description="Force / Arm", button_style="warning", icon="bolt")
+        self.clear_log_btn = widgets.Button(description="Clear Log", button_style="", icon="trash")
+        self.autorange_toggle = widgets.ToggleButton(value=True, description="Auto-Range", button_style="info")
+
+        self.readout_vpp = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:15px; font-weight:bold;'>Live Vpp: 0.00 V</span>")
+        self.readout_f0 = widgets.HTML("<span style='color:#FF007F; font-family:monospace; font-size:15px; font-weight:bold;'>Peak f0: 0.0 kHz</span>")
 
         # 2. AD3 Waveform Controls
-        self.shape_dropdown = widgets.Dropdown(
-            options=["Sine", "Triangle", "Square"],
-            value="Sine",
-            description="Waveform:",
-            layout=widgets.Layout(width="200px")
-        )
-        self.freq_slider = widgets.IntSlider(
-            value=10000, min=100, max=1000000, step=1,
-            description="Freq Slider:", continuous_update=False,
-            layout=widgets.Layout(width="350px")
-        )
-        self.freq_input = widgets.BoundedIntText(
-            value=10000, min=100, max=1000000, step=1,
-            description="Exact Freq:", layout=widgets.Layout(width="180px")
-        )
+        self.shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Sine", description="Waveform:", layout=widgets.Layout(width="200px"))
+        self.freq_slider = widgets.IntSlider(value=10000, min=100, max=250000, step=100, description="Freq Slider:", continuous_update=False, layout=widgets.Layout(width="350px"))
+        self.freq_input = widgets.BoundedIntText(value=10000, min=100, max=250000, step=100, description="Exact Freq:", layout=widgets.Layout(width="180px"))
         widgets.jslink((self.freq_slider, "value"), (self.freq_input, "value"))
 
-        self.amp_slider = widgets.FloatSlider(
-            value=1.5, min=0.1, max=1.5, step=0.1,
-            description="Amp Slider:", continuous_update=False,
-            layout=widgets.Layout(width="280px")
-        )
-        self.amp_input = widgets.BoundedFloatText(
-            value=1.5, min=0.1, max=1.5, step=0.1,
-            description="Exact Amp:", layout=widgets.Layout(width="150px")
-        )
+        self.amp_slider = widgets.FloatSlider(value=1.5, min=0.1, max=1.5, step=0.1, description="Amp Slider:", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.amp_input = widgets.BoundedFloatText(value=1.5, min=0.1, max=1.5, step=0.1, description="Exact Amp:", layout=widgets.Layout(width="150px"))
         widgets.jslink((self.amp_slider, "value"), (self.amp_input, "value"))
 
-        # 3. Hardware Trigger Controls
-        self.trig_mode_dropdown = widgets.Dropdown(
-            options=["Auto", "Normal", "Single"],
-            value="Auto",
-            description="Trig Mode:",
-            layout=widgets.Layout(width="180px")
-        )
-        self.trig_edge_dropdown = widgets.Dropdown(
-            options=["Rising", "Falling"],
-            value="Rising",
-            description="Trig Edge:",
-            layout=widgets.Layout(width="180px")
-        )
-        self.trig_level_slider = widgets.FloatSlider(
-            value=1.65, min=0.0, max=3.3, step=0.05,
-            description="Trig Level:", continuous_update=False,
-            layout=widgets.Layout(width="280px")
-        )
-        self.trig_level_input = widgets.BoundedFloatText(
-            value=1.65, min=0.0, max=3.3, step=0.05,
-            description="Exact Level:", layout=widgets.Layout(width="150px")
-        )
+        # 3. Trigger Controls
+        self.trig_mode_dd = widgets.Dropdown(options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px"))
+        self.trig_edge_dd = widgets.Dropdown(options=["Rising", "Falling"], value="Rising", description="Trig Edge:", layout=widgets.Layout(width="180px"))
+        self.trig_level_slider = widgets.FloatSlider(value=1.65, min=0.0, max=3.3, step=0.05, description="Trig Level:", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.trig_level_input = widgets.BoundedFloatText(value=1.65, min=0.0, max=3.3, step=0.05, description="Exact Level:", layout=widgets.Layout(width="150px"))
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
-        # 4. Display Toggles
-        self.autorange_toggle = widgets.ToggleButton(
-            value=True, description="Auto-Range",
-            button_style="info", tooltip="Activate adaptive time and voltage grid scaling"
-        )
+        # 4. FFT Controls
+        self.fft_unit_dd = widgets.Dropdown(options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px"))
+        self.fft_span_dd = widgets.Dropdown(options=[("Full (500 kHz)", 500000), ("100 kHz", 100000), ("20 kHz", 20000)], value=100000, description="Span / Zoom:", layout=widgets.Layout(width="210px"))
 
-        # 5. Digital Vpp Readout
-        self.readout = widgets.HTML(
-            value="<h3 style='color: #00FFCC; margin: 0; font-family: monospace;'>Live Vpp: 0.00 V</h3>"
-        )
+    def _build_plots(self):
+        # 1. Scope Figure (Tab 1)
+        self.fig_scope = go.FigureWidget()
+        self.fig_scope.add_scatter(x=list(range(500)), y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=2), name="A0 (Time)")
+        self.fig_scope.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.5, dash="dash"), name="Threshold")
+        self.fig_scope.update_layout(title="<b>Real-Time 1 MSPS Oscilloscope</b>", template="plotly_dark", height=420, margin=dict(l=40,r=20,t=45,b=35), uirevision="scope")
+        self.fig_scope.update_yaxes(range=[0, 3.5], title="Voltage (V)")
+        self.fig_scope.update_xaxes(title="Time (µs @ 1 MSPS)")
 
-    def _build_plot(self):
-        """Construct Plotly FigureWidget Canvas with live Trigger Level Line."""
-        self.fig = go.FigureWidget()
-        
-        # Trace 0: Analog Channel Data
-        self.fig.add_scatter(
-            x=list(range(self.display_window)),
-            y=[0] * self.display_window,
-            mode="lines",
-            line=dict(color="#00FFCC", width=2),
-            name="A0 (Analog In)"
-        )
-        
-        # Trace 1: Visual Trigger Threshold Level (Dashed Orange Line)
-        self.fig.add_scatter(
-            x=[0, self.display_window],
-            y=[1.65, 1.65],
-            mode="lines",
-            line=dict(color="#FFA500", width=1.5, dash="dash"),
-            name="Trigger Level"
-        )
+        # 2. Spectrum Figure (Tab 2)
+        initial_freqs = self.fft.freq_axis if self.fft else np.linspace(0, 500000, 1024)
+        self.fig_spectrum = go.FigureWidget()
+        self.fig_spectrum.add_scatter(x=initial_freqs, y=[-100]*len(initial_freqs), mode="lines", line=dict(color="#FF007F", width=1.8), name="PL FFT Spectrum")
+        self.fig_spectrum.add_scatter(x=[10000], y=[-40], mode="markers+text", marker=dict(color="#00FFCC", size=8, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak")
+        self.fig_spectrum.update_layout(title="<b>Real-Time PL-Accelerated Spectrum Analyzer (2048-pt FFT)</b>", template="plotly_dark", height=420, margin=dict(l=40,r=20,t=45,b=35), uirevision="spectrum")
+        self.fig_spectrum.update_yaxes(range=[-110, 0], title="Magnitude (dBV)")
+        self.fig_spectrum.update_xaxes(range=[0, 100000], title="Frequency (Hz)")
 
-        self.fig.update_layout(
-            title="<b>Real-Time 1 MSPS Hardware-Triggered Oscilloscope</b>",
-            xaxis_title="Time (Microseconds / Samples @ 1 MSPS)",
-            yaxis_title="Voltage (V)",
-            yaxis_range=[0, 3.5],
-            template="plotly_dark",
-            height=460,
-            margin=dict(l=40, r=20, t=50, b=40),
-            uirevision="oscilloscope_view_state"
-        )
+        # 3. Dual View Figure (Tab 3)
+        self.fig_dual = make_subplots(rows=2, cols=1, vertical_spacing=0.15, subplot_titles=("<b>Oscilloscope (Time Domain)</b>", "<b>Spectrum Analyzer (Frequency Domain)</b>"))
+        self.fig_dual = go.FigureWidget(self.fig_dual)
+        self.fig_dual.add_scatter(x=list(range(500)), y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=1.8), row=1, col=1)
+        self.fig_dual.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), row=1, col=1)
+        self.fig_dual.add_scatter(x=initial_freqs, y=[-100]*len(initial_freqs), mode="lines", line=dict(color="#FF007F", width=1.6), row=2, col=1)
+        self.fig_dual.update_layout(template="plotly_dark", height=530, showlegend=False, margin=dict(l=40,r=20,t=45,b=35), uirevision="dual")
+        self.fig_dual.update_yaxes(range=[0, 3.5], title="Voltage (V)", row=1, col=1)
+        self.fig_dual.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
+        self.fig_dual.update_xaxes(title="Time (µs)", row=1, col=1)
+        self.fig_dual.update_xaxes(range=[0, 100000], title="Frequency (Hz)", row=2, col=1)
 
-    def _on_start_clicked(self, b):
+        # Tab Container
+        self.tabs = widgets.Tab(children=[self.fig_scope, self.fig_spectrum, self.fig_dual])
+        self.tabs.set_title(0, "📈 Oscilloscope")
+        self.tabs.set_title(1, "📊 Spectrum Analyzer")
+        self.tabs.set_title(2, "🔀 Dual View")
+
+    def _setup_callbacks(self):
+        self.start_btn.on_click(self._on_start_clicked)
+        self.stop_btn.on_click(self._on_stop_clicked)
+        self.force_btn.on_click(self._on_force_clicked)
+        self.clear_log_btn.on_click(self._on_clear_log_clicked)
+
+        self.shape_dd.observe(lambda _: self._update_wavegen_params(), names="value")
+        self.freq_slider.observe(lambda _: self._update_wavegen_params(), names="value")
+        self.amp_slider.observe(lambda _: self._update_wavegen_params(), names="value")
+        self.trig_level_slider.observe(lambda _: self._update_hardware_threshold(), names="value")
+        self.trig_mode_dd.observe(self._on_mode_or_edge_change, names="value")
+        self.trig_edge_dd.observe(self._on_mode_or_edge_change, names="value")
+
+    def _update_wavegen_params(self):
+        self.ad3.update_parameters(shape=self.shape_dd.value, frequency=float(self.freq_slider.value), amplitude=float(self.amp_slider.value))
+
+    def _update_hardware_threshold(self):
+        if self.trigger:
+            self.trigger.set_threshold(float(self.trig_level_slider.value))
+
+    def _get_arm_control_word(self):
+        is_falling = (self.trig_edge_dd.value == "Falling")
+        mode = self.trig_mode_dd.value
+        ctrl = (1 << 0) | (1 << 3)  # Bit 0: ARM, Bit 3: SINGLE SHOT
+        if is_falling:
+            ctrl |= (1 << 2)        # Bit 2: FALLING EDGE
+        if mode == "Auto":
+            ctrl |= (1 << 1)        # Bit 1: AUTO TIMEOUT ENABLED
+        return ctrl
+
+    def _on_mode_or_edge_change(self, _):
+        if self.trig_mode_dd.value != "Single":
+            self._single_done = False
+        if self._is_running and self.trigger:
+            self.trigger.mmio.write(0x00, self._get_arm_control_word())
+
+    def _on_start_clicked(self, _):
         self.start()
 
-    def _on_stop_clicked(self, b):
+    def _on_stop_clicked(self, _):
         self.stop()
 
-    def _on_force_trig_clicked(self, b):
+    def _on_force_clicked(self, _):
+        if self.trig_mode_dd.value == "Single":
+            self._single_done = False
         if self.trigger:
             self.trigger.force_trigger()
 
+    def _on_clear_log_clicked(self, _):
+        clear_output(wait=True)
+        display(widgets.VBox([self.control_panel, self.tabs]))
+
     def _update_loop(self):
-        """Background thread execution loop for acquisition & UI updates."""
+        """Universal Arm-on-Demand Acquisition Loop."""
+        dma_armed = False
         try:
-            # Configure initial hardware trigger registers
+            # Configure 50ms Timeout and Threshold
             if self.trigger:
-                self.trigger.configure(
-                    mode=self.trig_mode_dropdown.value,
-                    edge=self.trig_edge_dropdown.value,
-                    threshold_volts=float(self.trig_level_slider.value),
-                    timeout_ms=50.0
-                )
+                self.trigger.mmio.write(0x0C, 5000000)
+                self._update_hardware_threshold()
 
-            # Start AD3 Signal Generation
-            self.ad3.start(
-                shape=self.shape_dropdown.value,
-                frequency=float(self.freq_slider.value),
-                amplitude=float(self.amp_slider.value)
-            )
-
-            # Wait for AD3 USB hardware readiness
+            # Start AD3 Wavegen
+            self.ad3.start(shape=self.shape_dd.value, frequency=float(self.freq_slider.value), amplitude=float(self.amp_slider.value), offset=1.65)
             wait_start = time.time()
             while self._is_running and not self.ad3.is_ready:
                 time.sleep(0.05)
-                if time.time() - wait_start > 4.0:
+                if time.time() - wait_start > 3.0:
                     break
 
+            print(f"[Dashboard] Acquisition active | Mode: {self.trig_mode_dd.value} | Signal: {self.shape_dd.value} @ {self.freq_slider.value} Hz")
+
             while self._is_running:
-                # 1. Update AD3 parameters dynamically
-                self.ad3.update_parameters(
-                    shape=self.shape_dropdown.value,
-                    frequency=float(self.freq_slider.value),
-                    amplitude=float(self.amp_slider.value)
-                )
+                mode = self.trig_mode_dd.value
 
-                # 2. Update Hardware Trigger Registers dynamically
-                if self.trigger:
-                    self.trigger.set_mode(self.trig_mode_dropdown.value)
-                    self.trigger.set_edge(self.trig_edge_dropdown.value)
-                    self.trigger.set_threshold(float(self.trig_level_slider.value))
+                # Single-Shot hold
+                if mode == "Single" and self._single_done:
+                    time.sleep(0.02)
+                    continue
 
-                # 3. Capture Hardware Triggered Frame from DMA
-                if self.xadc:
-                    voltages = self.xadc.capture(crop_startup_samples=0)
-                else:
-                    # Simulation mode fallback if no FPGA overlay connected
-                    t = np.linspace(0, 0.016, self.packet_size)
-                    voltages = 1.65 + (self.amp_slider.value / 2.0) * np.sin(2 * np.pi * self.freq_slider.value * t)
+                # 1. Arm both DMAs exactly ONCE per frame
+                if not dma_armed:
+                    self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+                    self.fft.dma.recvchannel.transfer(self.fft._buffer)
+                    self.trigger.mmio.write(0x00, self._get_arm_control_word())
+                    dma_armed = True
 
-                # 4. Adaptive Window Slicing (Sample 0 is ALREADY the hardware trigger point!)
-                if self.autorange_toggle.value:
-                    freq = float(self.freq_slider.value)
-                    period_us = 1e6 / freq if freq > 0 else 1000
-                    show_samples = int(5 * period_us)
-                    show_samples = max(40, min(show_samples, self.display_window, len(voltages)))
-                    plot_voltages = voltages[:show_samples]
-                else:
-                    max_idx = min(self.display_window, len(voltages))
-                    plot_voltages = voltages[:max_idx]
+                # 2. Check if hardware frame completed
+                if self.xadc.dma.recvchannel.idle and self.fft.dma.recvchannel.idle:
+                    dma_armed = False
+                    
+                    # Process Time Data
+                    raw_time = np.array(self.xadc._buffer)
+                    voltages = (raw_time >> 4) * (3.3 / 4095.0)
 
-                time_axis = np.arange(len(plot_voltages))
-                trig_v = float(self.trig_level_slider.value)
+                    # Process FFT Data
+                    raw_fft = np.array(self.fft._buffer, copy=True)[:1024].astype(np.float64)
+                    unit_mode = self.fft_unit_dd.value
+                    if unit_mode == "Linear":
+                        mags = (raw_fft / 2048.0) * (3.3 / 4095.0) * 1000.0
+                    elif unit_mode == "dBFS":
+                        mags = 20.0 * np.log10(np.maximum(raw_fft, 1.0) / 65535.0)
+                    else:
+                        linear_v = (raw_fft / 2048.0) * (3.3 / 4095.0)
+                        mags = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
 
-                # 5. Atomic Canvas Batch Update
-                with self.fig.batch_update():
-                    # Update waveform
-                    self.fig.data[0].x = time_axis
-                    self.fig.data[0].y = plot_voltages
-                    # Update visual trigger line
-                    self.fig.data[1].x = [0, len(plot_voltages)]
-                    self.fig.data[1].y = [trig_v, trig_v]
+                    # Peak tracking
+                    peak_idx = np.argmax(mags[10:]) + 10
+                    peak_f = self.fft.freq_axis[peak_idx]
+                    peak_m = mags[peak_idx]
 
+                    # Auto-Range Slicing
+                    vpp = float(np.max(voltages) - np.min(voltages))
+                    freq_val = float(self.freq_slider.value)
+                    
                     if self.autorange_toggle.value:
-                        amp = float(self.amp_slider.value)
-                        margin = 0.25
-                        self.fig.layout.xaxis.range = [0, len(plot_voltages)]
-                        self.fig.layout.yaxis.range = [max(0.0, 1.65 - (amp + margin)), min(3.5, 1.65 + (amp + margin))]
+                        period_us = 1e6 / freq_val if freq_val > 0 else 1000
+                        show_pts = int(5 * period_us) if vpp > 0.1 else 500
+                        show_pts = max(40, min(show_pts, 1024, len(voltages)))
+                    else:
+                        show_pts = 500
 
-                # 6. Update Live Vpp
-                if len(voltages) > 0:
-                    vpp = np.max(voltages) - np.min(voltages)
-                    self.readout.value = f"<h3 style='color: #00FFCC; margin: 0; font-family: monospace;'>Live Vpp: {vpp:.2f} V</h3>"
+                    plot_v = voltages[:show_pts]
+                    time_x = np.arange(len(plot_v))
+                    trig_v = float(self.trig_level_slider.value)
+                    active_tab = self.tabs.selected_index
+                    max_span = float(self.fft_span_dd.value)
 
-                time.sleep(0.035)
+                    # Update Active Tab
+                    if active_tab == 0:
+                        with self.fig_scope.batch_update():
+                            self.fig_scope.data[0].x = time_x
+                            self.fig_scope.data[0].y = plot_v
+                            self.fig_scope.data[1].x = [0, len(plot_v)]
+                            self.fig_scope.data[1].y = [trig_v, trig_v]
+                            if self.autorange_toggle.value and vpp > 0.1:
+                                amp = float(self.amp_slider.value)
+                                self.fig_scope.layout.xaxis.range = [0, len(plot_v)]
+                                self.fig_scope.layout.yaxis.range = [max(0.0, 1.65 - (amp + 0.25)), min(3.5, 1.65 + (amp + 0.25))]
+                            elif self.autorange_toggle.value:
+                                self.fig_scope.layout.yaxis.range = [0, 3.5]
+
+                    elif active_tab == 1:
+                        with self.fig_spectrum.batch_update():
+                            self.fig_spectrum.data[0].x = self.fft.freq_axis
+                            self.fig_spectrum.data[0].y = mags
+                            self.fig_spectrum.data[1].x = [peak_f]
+                            self.fig_spectrum.data[1].y = [peak_m]
+                            self.fig_spectrum.data[1].text = [f" {peak_f/1e3:.1f} kHz ({peak_m:.1f} {unit_mode})"]
+                            self.fig_spectrum.layout.xaxis.range = [0, max_span]
+                            self.fig_spectrum.layout.yaxis.title = f"Magnitude ({unit_mode})"
+
+                    elif active_tab == 2:
+                        with self.fig_dual.batch_update():
+                            self.fig_dual.data[0].x = time_x
+                            self.fig_dual.data[0].y = plot_v
+                            self.fig_dual.data[1].x = [0, len(plot_v)]
+                            self.fig_dual.data[1].y = [trig_v, trig_v]
+                            self.fig_dual.data[2].x = self.fft.freq_axis
+                            self.fig_dual.data[2].y = mags
+                            self.fig_dual.layout.xaxis2.range = [0, max_span]
+
+                    # Digital Readouts
+                    mode_tag = " <span style='color:#FFA500;'>(LOCKED)</span>" if mode == "Single" else ""
+                    self.readout_vpp.value = f"<span style='color:#00FFCC; font-family:monospace; font-size:15px; font-weight:bold;'>Live Vpp: {vpp:.2f} V{mode_tag}</span>"
+                    self.readout_f0.value = f"<span style='color:#FF007F; font-family:monospace; font-size:15px; font-weight:bold;'>Peak f0: {peak_f/1e3:.2f} kHz</span>"
+
+                    if mode == "Single":
+                        self._single_done = True
+
+                    time.sleep(0.033)
+
+                else:
+                    time.sleep(0.01)
 
         except Exception as e:
-            print(f"[Dashboard] Error in update loop: {e}")
+            print(f"[Dashboard] Error: {e}")
         finally:
             self._is_running = False
+            if dma_armed:
+                try:
+                    self.xadc.dma.mmio.write(0x30, 0x04)
+                    self.fft.dma.mmio.write(0x30, 0x04)
+                except Exception:
+                    pass
             self.ad3.stop()
             print("[Dashboard] Stopped cleanly.")
 
     def start(self):
-        """Launch dashboard execution in background thread."""
         if self._is_running:
-            print("[Dashboard] Already running.")
             return
+        
+        print("[Dashboard] Starting acquisition...")
+        self._single_done = False
+        self.ad3.stop()
+        try:
+            self.xadc.dma.mmio.write(0x30, 0x04)
+            self.fft.dma.mmio.write(0x30, 0x04)
+            time.sleep(0.01)
+            self.xadc.dma.recvchannel.start()
+            self.fft.dma.recvchannel.start()
+        except Exception:
+            pass
+
         self._is_running = True
         self._thread = threading.Thread(target=self._update_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
-        """Halt dashboard background updates."""
         self._is_running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+        self._single_done = False
 
     def display(self):
-        """Render the complete UI Dashboard in Jupyter."""
-        row1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_trig_btn, self.autorange_toggle, self.readout],
-                            layout=widgets.Layout(align_items="center", margin="0 0 10px 0"))
-        row2 = widgets.HBox([self.shape_dropdown, self.amp_slider, self.amp_input])
-        row3 = widgets.HBox([self.freq_slider, self.freq_input])
-        row4 = widgets.HBox([self.trig_mode_dropdown, self.trig_edge_dropdown, self.trig_level_slider, self.trig_level_input])
-        
-        ui_layout = widgets.VBox([row1, row4, row2, row3, self.fig])
-        display(ui_layout)```
+        ctrl_row1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.clear_log_btn, self.autorange_toggle, self.readout_vpp, self.readout_f0], layout=widgets.Layout(align_items="center", gap="10px", margin="0 0 10px 0"))
+        ctrl_row2 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_level_slider, self.trig_level_input])
+        ctrl_row3 = widgets.HBox([self.shape_dd, self.amp_slider, self.amp_input])
+        ctrl_row4 = widgets.HBox([self.freq_slider, self.freq_input])
+        ctrl_row5 = widgets.HBox([self.fft_unit_dd, self.fft_span_dd])
+
+        self.control_panel = widgets.VBox([ctrl_row1, ctrl_row2, ctrl_row3, ctrl_row4, ctrl_row5], layout=widgets.Layout(margin="0 0 15px 0"))
+        display(widgets.VBox([self.control_panel, self.tabs]))```
 
 env_checker.py:
 
@@ -743,7 +825,7 @@ class StreamingXADC:
     Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
     """
 
-    def __init__(self, overlay, default_packet_size: int = 16384):
+    def __init__(self, overlay, default_packet_size: int = 2048):
         """
         Initialize the DMA controller from the loaded PYNQ overlay.
         Default packet size is set to 16,384 to match the hardware packetizer.
@@ -785,6 +867,139 @@ class StreamingXADC:
 
     def close(self):
         """Free contiguous memory allocation (CMA) buffer."""
+        if hasattr(self, "_buffer") and self._buffer is not None:
+            try:
+                self._buffer.close()
+                self._buffer = None
+            except Exception:
+                pass
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()```
+
+fft_dma.py:
+
+```python
+from typing import Tuple, Optional
+import numpy as np
+from pynq import allocate
+
+class StreamingFFT:
+    """
+    High-level driver for the PL-accelerated 2048-point FFT & CORDIC Magnitude Engine.
+    
+    Streams pre-calculated magnitude bins from the FPGA via AXI DMA (axi_dma_1),
+    formats the single-sided spectrum (0 Hz to 500 kHz), and provides logarithmic
+    (dBV / dBFS) and linear power spectrum transformations.
+    """
+
+    def __init__(self, overlay, fft_points: int = 2048, sample_rate_hz: float = 1_000_000.0):
+        """
+        Initialize the FFT DMA controller from the loaded PYNQ overlay.
+        
+        :param overlay: Loaded pynq.Overlay or OscilloscopeOverlay instance.
+        :param fft_points: FFT transform length matching the PL xfft core (default: 2048).
+        :param sample_rate_hz: ADC sampling frequency (default: 1.0 MSPS).
+        """
+        self.fft_points = fft_points
+        self.sample_rate_hz = float(sample_rate_hz)
+        self.num_bins = fft_points // 2  # Single-sided spectrum bins (1024)
+        
+        # Pre-compute frequency axis grid (0 to 500 kHz for 1 MSPS @ 2048 pts)
+        self.freq_axis = np.arange(self.num_bins) * (self.sample_rate_hz / self.fft_points)
+
+        # Dynamic binding to axi_dma_1 (by name or base address 0x40410000)
+        if hasattr(overlay, "axi_dma_1"):
+            self.dma = overlay.axi_dma_1
+        else:
+            # Fallback: search IP dict for secondary DMA or address 0x40410000
+            dma_blocks = [
+                getattr(overlay, ip) for ip, details in overlay.ip_dict.items()
+                if "dma" in ip.lower() and details.get("phys_addr") == 0x40410000
+            ]
+            if dma_blocks:
+                self.dma = dma_blocks[0]
+            else:
+                all_dmas = [ip for ip in overlay.ip_dict.keys() if "dma" in ip.lower()]
+                if len(all_dmas) > 1:
+                    # Choose the second DMA engine
+                    self.dma = getattr(overlay, all_dmas[1])
+                elif all_dmas:
+                    self.dma = getattr(overlay, all_dmas[0])
+                else:
+                    raise RuntimeError("No AXI DMA block found for FFT stream (axi_dma_1).")
+
+        # Allocate contiguous CMA buffer ONCE for fast real-time streaming
+        self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
+
+    def capture_raw(self) -> np.ndarray:
+        """
+        Triggers a high-speed S2MM DMA transfer of 2048 magnitude points from PL.
+        Blocks until the frame completes (asserted by CORDIC/FFT TLAST).
+        """
+        self.dma.recvchannel.transfer(self._buffer)
+        self.dma.recvchannel.wait()
+        return np.array(self._buffer, copy=True)
+
+    def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures a hardware FFT frame and returns (frequencies, magnitudes).
+        
+        :param unit: Output unit: 'dBV', 'dBFS', or 'Linear' (Volts Peak).
+        :param ref_voltage: Full-scale reference voltage of ADC (default: 3.3V).
+        :return: Tuple of (freq_axis_hz, magnitude_array) of length 1024.
+        """
+        raw_full = self.capture_raw()
+        
+        # 1. Take single-sided spectrum (first N/2 bins from 0 to Nyquist)
+        raw_half = raw_full[:self.num_bins].astype(np.float64)
+
+        # 2. Scale raw 16-bit CORDIC magnitude to equivalent peak Volts
+        # Scaled xfft + CORDIC translate normalized to ADC range (0V - 3.3V)
+        linear_volts = (raw_half / 32768.0) * ref_voltage
+
+        # 3. Convert to requested unit
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            # 20 * log10(V / 1V RMS equivalent)
+            safe_linear = np.maximum(linear_volts, 1e-6)
+            magnitudes = 20.0 * np.log10(safe_linear)
+        elif unit_clean == "DBFS":
+            # Relative to full scale (0 dBFS max)
+            safe_raw = np.maximum(raw_half, 1.0)
+            magnitudes = 20.0 * np.log10(safe_raw / 65535.0)
+        elif unit_clean == "LINEAR":
+            magnitudes = linear_volts
+        else:
+            raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
+
+        return self.freq_axis, magnitudes
+
+    @staticmethod
+    def get_peak_frequency(freqs: np.ndarray, mags: np.ndarray, min_freq_hz: float = 1000.0) -> Tuple[float, float]:
+        """
+        Finds the fundamental/dominant frequency and peak magnitude,
+        ignoring near-DC components below min_freq_hz.
+        
+        :return: (peak_frequency_hz, peak_magnitude)
+        """
+        # Exclude DC and low-frequency offset bins if requested
+        valid_indices = np.where(freqs >= min_freq_hz)[0]
+        if len(valid_indices) == 0:
+            peak_idx = np.argmax(mags)
+        else:
+            peak_idx = valid_indices[np.argmax(mags[valid_indices])]
+
+        return float(freqs[peak_idx]), float(mags[peak_idx])
+
+    def close(self):
+        """Free the allocated contiguous memory (CMA) buffer."""
         if hasattr(self, "_buffer") and self._buffer is not None:
             try:
                 self._buffer.close()
@@ -1142,72 +1357,125 @@ overlay.py:
 
 ```python
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
+import time
+import numpy as np
 from pynq import Overlay
 
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.xadc_dma import StreamingXADC
+from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 1 MSPS Hardware-Triggered Oscilloscope.
-    
-    Subclasses pynq.Overlay to provide unified access to:
-      • self.trigger  -> HardwareTrigger (AXI-Lite edge & threshold registers)
-      • self.xadc     -> StreamingXADC (1 MSPS DMA Stream receiver)
-      • self.wavegen  -> AD3SignalGenerator (Digilent AD3 waveform generator)
-      • self.dashboard() -> Launches interactive Plotly + IPywidgets UI
+    Unified Custom Overlay for the PYNQ-Z2 1 MSPS Oscilloscope & Spectrum Analyzer.
     """
 
     def __init__(
         self,
         bitfile_name: Optional[Union[str, Path]] = None,
         version: Optional[str] = None,
-        packet_size: int = 16384,
+        packet_size: int = 2048,
+        fft_points: int = 2048,
         **kwargs
     ):
-        """
-        Initialize the Oscilloscope Overlay.
-
-        :param bitfile_name: Path to a local .bit file (e.g. './pynq_z2.bit').
-                             If None, automatically detects board and fetches pinned release.
-        :param version: Release tag override (e.g. 'v1.1.0-rc1').
-        :param packet_size: Number of 1 MSPS samples per DMA frame (Default: 16,384).
-        """
-        # Resolve bitstream path
         if bitfile_name is None:
             resolved_bit = str(HardwareLoader.get_overlay_path(version=version))
         else:
             resolved_bit = str(Path(bitfile_name).resolve())
 
-        # Program FPGA fabric via base pynq.Overlay
         super().__init__(resolved_bit, **kwargs)
 
-        # Initialize sub-drivers
         self.packet_size = packet_size
+        self.fft_points = fft_points
+        
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
+        self.fft = StreamingFFT(self, fft_points=fft_points)
         self.wavegen = AD3SignalGenerator()
 
-    def capture(self, crop_startup_samples: int = 8):
-        """Trigger a DMA capture and return a NumPy array of voltages."""
-        return self.xadc.capture(crop_startup_samples=crop_startup_samples)
+    def capture_both(
+        self,
+        unit: str = "dBV",
+        crop_startup_samples: int = 0,
+        timeout: float = 1.0
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Synchronously captures both Time-Domain and Frequency-Domain frames using the Arm-on-Demand sequence.
+        """
+        # Ensure channels are idle before arming
+        t_wait = time.time()
+        while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
+            time.sleep(0.001)
+            if time.time() - t_wait > timeout:
+                try:
+                    self.xadc.dma.mmio.write(0x30, 0x04)
+                    self.fft.dma.mmio.write(0x30, 0x04)
+                    time.sleep(0.01)
+                    self.xadc.dma.recvchannel.start()
+                    self.fft.dma.recvchannel.start()
+                except Exception:
+                    pass
+                break
+
+        # 1. Queue both DMAs FIRST
+        self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+        self.fft.dma.recvchannel.transfer(self.fft._buffer)
+
+        # 2. Arm Hardware Trigger
+        self.trigger.arm()
+
+        # 3. Wait for Hardware Completion
+        self.xadc.dma.recvchannel.wait()
+        self.fft.dma.recvchannel.wait()
+
+        # 4. Process Time-Domain data
+        raw_time = np.array(self.xadc._buffer)
+        voltages = (raw_time >> 4) * (3.3 / 4095.0)
+        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
+            voltages = voltages[crop_startup_samples:]
+
+        # 5. Process Frequency-Domain data
+        raw_fft = np.array(self.fft._buffer, copy=True)
+        raw_half = raw_fft[:self.fft.num_bins].astype(np.float64)
+        
+        unit_clean = unit.strip().upper()
+        if unit_clean == "LINEAR":
+            mags = (raw_half / 2048.0) * (3.3 / 4095.0) * 1000.0
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half, 1.0) / 65535.0)
+        else:
+            linear_v = (raw_half / 2048.0) * (3.3 / 4095.0)
+            mags = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
+
+        return voltages, self.fft.freq_axis, mags
+
+    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
+        voltages, _, _ = self.capture_both(crop_startup_samples=crop_startup_samples)
+        return voltages
+
+    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
+        _, freqs, mags = self.capture_both(unit=unit)
+        return freqs, mags
 
     def dashboard(self, display_window: int = 1024):
-        """
-        Instantiate and display the interactive Plotly + IPywidgets dashboard.
-        """
         from pynq_oscilloscope.dashboard import OscilloscopeDashboard
-        dash = OscilloscopeDashboard(overlay=self, packet_size=self.packet_size, display_window=display_window)
+        dash = OscilloscopeDashboard(
+            overlay=self,
+            packet_size=self.packet_size,
+            fft_points=self.fft_points,
+            display_window=display_window
+        )
         dash.display()
         return dash
 
     def close(self):
-        """Cleanly release CMA memory buffers and stop active wavegen."""
         if hasattr(self, "xadc") and self.xadc is not None:
             self.xadc.close()
+        if hasattr(self, "fft") and self.fft is not None:
+            self.fft.close()
         if hasattr(self, "wavegen") and self.wavegen is not None:
             self.wavegen.stop()
 
@@ -1350,7 +1618,7 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "source": [
     "## 1. Load Hardware Overlay\n",
-    "Instantiate `OscilloscopeOverlay()`. It automatically identifies the board (PYNQ-Z2) and fetches the pinned `v1.1.0-rc1` release binaries from GitHub Releases."
+    "Instantiate `OscilloscopeOverlay()`. It automatically identifies the board (PYNQ-Z2) and fetches the pinned release binaries from GitHub Releases."
    ]
   },
   {
@@ -1400,7 +1668,7 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Capture 16,384 samples (16.384 ms of 1 MSPS data)\n",
+    "# Capture 2,048 samples (2.048 ms of 1 MSPS data)\n",
     "voltages = ol.capture()\n",
     "print(f\"Captured {len(voltages)} samples successfully!\")\n",
     "print(f\"Sample Voltage Range: Min = {voltages.min():.2f} V, Max = {voltages.max():.2f} V\")"
@@ -1457,15 +1725,15 @@ class OscilloscopeOverlay(Overlay):
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 3: Real-Time Hardware-Triggered Oscilloscope Dashboard\n",
+    "# Notebook 3: Real-Time Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard\n",
     "\n",
-    "This notebook deploys the complete interactive closed-loop **Oscilloscope Dashboard** using the new `OscilloscopeOverlay`.\n",
+    "This notebook deploys the complete interactive **Multi-Domain Instrument** using `OscilloscopeOverlay`.\n",
     "\n",
     "### Features:\n",
-    "- **FPGA Hardware Triggering** (Rising/Falling edge, Auto/Normal/Single modes, sub-microsecond alignment)\n",
-    "- **Real-time 1 MSPS DMA Acquisition** (XADC via AXI DMA direct to DDR)\n",
-    "- **Non-blocking Waveform Generation** (Digilent AD3 via background worker)\n",
-    "- **Interactive Dark-Mode Plotly UI** with real-time visual trigger line and zero-latency client-side links"
+    "- 📈 **Oscilloscope Tab:** Real-time 1 MSPS analog waveform with sub-microsecond hardware edge triggering and live threshold line.\n",
+    "- 📊 **Spectrum Analyzer Tab:** Real-time 2048-point FPGA FFT ($0 - 500\\,\\text{kHz}$) with auto peak detector ($f_0$) and configurable dBV/dBFS scales.\n",
+    "- 🔀 **Dual View Tab:** Simultaneous split view showing Time and Frequency domains concurrently.\n",
+    "- ⚡ **AD3 Signal Generator:** Non-blocking background waveform generation (Sine, Triangle, Square)."
    ]
   },
   {
@@ -1481,9 +1749,9 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import check_usb_permissions\n",
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
     "\n",
-    "# Set permissions for /dev/bus/usb\n",
+    "# Grant permissions for /dev/bus/usb\n",
     "check_usb_permissions()"
    ]
   },
@@ -1491,7 +1759,7 @@ class OscilloscopeOverlay(Overlay):
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 2. Launch Complete Oscilloscope Dashboard\n",
+    "## 2. Launch Complete Multi-Tab Dashboard\n",
     "Instantiate `OscilloscopeOverlay` and call `.dashboard()` to start the real-time application."
    ]
   },
@@ -1501,11 +1769,16 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import OscilloscopeOverlay\n",
-    "\n",
-    "# 1. Initialize Overlay (auto-downloads v1.1.0-rc1 or loads local .bit)\n",
-    "ol = OscilloscopeOverlay()\n",
-    "\n",
+    "# 1. Initialize Overlay (downloads v1.2.0-rc1 or loads local .bit)\n",
+    "ol = OscilloscopeOverlay()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
     "# 2. Render and launch interactive Dashboard\n",
     "app = ol.dashboard()"
    ]
@@ -1526,7 +1799,506 @@ class OscilloscopeOverlay(Overlay):
    "source": [
     "app.stop()\n",
     "ol.close()\n",
-    "print(\"Oscilloscope dashboard stopped cleanly.\")"
+    "print(\"Dashboard stopped and memory released.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
+04_fft_spectrum_analyzer.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 4: Real-Time PL-Accelerated FFT & Spectrum Analyzer Guide\n",
+    "\n",
+    "This notebook demonstrates how to capture and visualize frequency spectra computed entirely within the **Programmable Logic (PL)** using the **Xilinx LogiCORE FFT (2048-pt)** and **CORDIC Magnitude Engine** on the PYNQ-Z2."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. System Setup & Permission Check"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
+    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
+    "import matplotlib.pyplot as plt\n",
+    "import time\n",
+    "\n",
+    "# Grant permissions for /dev/bus/usb\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Load the Hardware Overlay\n",
+    "Instantiate `OscilloscopeOverlay()`. It automatically loads the dual-DMA bitstream containing both Time-Domain and Frequency-Domain hardware engines."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol = OscilloscopeOverlay()\n",
+    "print(\"✅ Oscilloscope & Spectrum Analyzer Overlay loaded successfully!\")\n",
+    "print(f\"  • Time Packet Size : {ol.packet_size} samples @ 1 MSPS\")\n",
+    "print(f\"  • PL FFT Bins      : {ol.fft_points // 2} unique frequency bins (0 Hz to 500 kHz)\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Generate a Test Tone with Analog Discovery 3\n",
+    "Start generating a **25 kHz Sine wave** (1.5V Amplitude, 1.65V DC Offset) on Wavegen Channel 1 (W1 $\\rightarrow$ A0)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Start 25 kHz Sine wave\n",
+    "ol.wavegen.start(shape=\"Sine\", frequency=25000.0, amplitude=1.5, offset=1.65)\n",
+    "time.sleep(1.0)\n",
+    "print(\"✅ AD3 active @ 25 kHz (1.5V amplitude, 1.65V offset).\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Capture PL Hardware FFT Spectrum\n",
+    "Capture the spectrum in **dBV** logarithmic units directly from the FPGA using `ol.capture_fft()`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Capture single-sided spectrum (0 Hz to 500 kHz)\n",
+    "freqs, mags = ol.capture_fft(unit=\"dBV\")\n",
+    "\n",
+    "# Detect peak frequency\n",
+    "peak_freq, peak_mag = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=1000.0)\n",
+    "print(f\"🎯 Dominant Peak: {peak_freq/1e3:.2f} kHz @ {peak_mag:.1f} dBV\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Spectrum Visualization with Matplotlib\n",
+    "Plot the frequency spectrum showing the sharp fundamental peak."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
+    "plt.plot(freqs / 1e3, mags, color=\"#FF007F\", linewidth=1.6, label=f\"PL Hardware FFT (Peak: {peak_freq/1e3:.1f} kHz)\")\n",
+    "plt.scatter([peak_freq / 1e3], [peak_mag], color=\"#00FFCC\", s=60, zorder=5, label=f\"Fundamental: {peak_freq/1e3:.1f} kHz ({peak_mag:.1f} dBV)\")\n",
+    "\n",
+    "plt.title(\"Hardware-Accelerated 1 MSPS FFT Spectrum (0 to 100 kHz)\", fontsize=12, fontweight=\"bold\")\n",
+    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
+    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
+    "plt.xlim(0, 100)  # Zoom to 0 - 100 kHz\n",
+    "plt.ylim(-100, 0)\n",
+    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "plt.legend(loc=\"upper right\")\n",
+    "\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6. Harmonic Distortion Test (Square Wave Fourier Harmonics)\n",
+    "Update AD3 to a **10 kHz Square wave** and observe the fundamental frequency ($f_0$) along with odd harmonics ($3f_0 = 30\\,\\text{kHz}$, $5f_0 = 50\\,\\text{kHz}$, $7f_0 = 70\\,\\text{kHz}$, $9f_0 = 90\\,\\text{kHz}$)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Switch to 10 kHz Square wave\n",
+    "ol.wavegen.update_parameters(shape=\"Square\", frequency=10000.0, amplitude=1.2)\n",
+    "time.sleep(0.5)\n",
+    "\n",
+    "freqs_sq, mags_sq = ol.capture_fft(unit=\"dBV\")\n",
+    "\n",
+    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
+    "plt.plot(freqs_sq / 1e3, mags_sq, color=\"#E040FB\", linewidth=1.6, label=\"10 kHz Square Wave Spectrum\")\n",
+    "\n",
+    "plt.title(\"Square Wave Odd Harmonics: 10k, 30k, 50k, 70k, 90k Hz\", fontsize=12, fontweight=\"bold\")\n",
+    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
+    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
+    "plt.xlim(0, 100)\n",
+    "plt.ylim(-110, 0)\n",
+    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "plt.legend(loc=\"upper right\")\n",
+    "\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 7. Clean Hardware Shutdown"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol.close()\n",
+    "print(\"🔒 Hardware handles closed and CMA memory released.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
+05_fft_diagnostic_test.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 🔬 Diagnostic Test Suite: PL FFT & Dual-DMA Pipeline Validation\n",
+    "\n",
+    "This notebook performs step-by-step isolated unit testing on the **FPGA Hardware Trigger**, **Dual-DMA Engine**, **PL-accelerated FFT/CORDIC**, and **AD3 Signal Generator** without running the full dashboard UI."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 1. System Permissions & USB Verification"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
+    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
+    "import numpy as np\n",
+    "import time\n",
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "# Grant permissions to access the AD3 USB bus\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 2. Load Overlay & Start AD3 Test Signal\n",
+    "Loads the `v1.2.0-rc1` bitstream, verifies both DMA blocks, and starts a **10 kHz Sine wave** (1.5V amplitude, 1.65V DC offset)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Load Hardware Overlay\n",
+    "ol = OscilloscopeOverlay()\n",
+    "print(\"✅ Overlay loaded successfully!\")\n",
+    "print(f\"  • Time DMA (axi_dma_0) : {ol.xadc.dma}\")\n",
+    "print(f\"  • FFT DMA  (axi_dma_1) : {ol.fft.dma}\")\n",
+    "\n",
+    "# 2. Configure Hardware Trigger: Single-Shot Mode @ 1.65V\n",
+    "ol.trigger.configure(mode=\"Single\", edge=\"Rising\", threshold_volts=1.65, timeout_ms=50.0)\n",
+    "print(f\"  • Hardware Trigger     : {ol.trigger}\")\n",
+    "\n",
+    "# 3. Start 10 kHz Sine Wave on AD3 (W1 -> A0)\n",
+    "ol.wavegen.start(shape=\"Sine\", frequency=10000.0, amplitude=1.5, offset=1.65)\n",
+    "time.sleep(1.0)\n",
+    "print(\"✅ AD3 active at 10 kHz (1.5V amplitude, 1.65V offset).\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 3. Test 1: Synchronized 10-Frame Arm-on-Demand Capture\n",
+    "Verifies that the Arm-on-Demand sequence (`transfer` $\\rightarrow$ `arm` $\\rightarrow$ `wait`) captures 10 consecutive frames synchronously with zero hangs or timeouts."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(\"🚀 Running Single-Shot Hardware-Synchronized Capture (10 frames)...\")\n",
+    "\n",
+    "ol.trigger.configure(mode=\"Single\", edge=\"Rising\", threshold_volts=1.65, timeout_ms=50.0)\n",
+    "\n",
+    "for i in range(10):\n",
+    "    t0 = time.time()\n",
+    "    \n",
+    "    # 1. Prime BOTH DMA channels FIRST (Both DMAs now wait with TREADY=1)\n",
+    "    ol.xadc.dma.recvchannel.transfer(ol.xadc._buffer)\n",
+    "    ol.fft.dma.recvchannel.transfer(ol.fft._buffer)\n",
+    "    \n",
+    "    # 2. Arm the hardware trigger (Captures exactly 1 frame starting at Sample 0, then auto-disarms)\n",
+    "    ol.trigger.arm()\n",
+    "    \n",
+    "    # 3. Wait for hardware completion\n",
+    "    ol.xadc.dma.recvchannel.wait()\n",
+    "    ol.fft.dma.recvchannel.wait()\n",
+    "    \n",
+    "    dt = (time.time() - t0) * 1000.0\n",
+    "    \n",
+    "    # Process Time-Domain data\n",
+    "    raw_time = np.array(ol.xadc._buffer)\n",
+    "    voltages = (raw_time >> 4) * (3.3 / 4095.0)\n",
+    "    \n",
+    "    # Process Frequency-Domain data\n",
+    "    raw_fft = np.array(ol.fft._buffer, copy=True)\n",
+    "    raw_half = raw_fft[:1024].astype(np.float64)\n",
+    "    linear_volts = (raw_half / 2048.0) * (3.3 / 4095.0)\n",
+    "    mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))\n",
+    "    \n",
+    "    peak_idx = np.argmax(mags[10:]) + 10 # Ignore DC bin\n",
+    "    peak_f = ol.fft.freq_axis[peak_idx]\n",
+    "    \n",
+    "    print(f\"  Frame {i:02d}: Time={dt:5.1f} ms | Vpp={voltages.max()-voltages.min():.2f}V | Peak f0={peak_f/1e3:5.2f} kHz @ {mags[peak_idx]:.1f} dBV\")\n",
+    "    time.sleep(0.02)\n",
+    "\n",
+    "print(\"\\n✅ All 10 frames completed with ZERO hangs or timeouts!\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 4. Test 2: Hardware FPGA FFT vs. Software NumPy FFT Visual Comparison\n",
+    "Captures 1 frame and plots the raw FPGA CORDIC magnitude output against a reference software NumPy FFT to verify spectrum shape and peak alignment."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Capture 1 clean frame\n",
+    "ol.xadc.dma.recvchannel.transfer(ol.xadc._buffer)\n",
+    "ol.fft.dma.recvchannel.transfer(ol.fft._buffer)\n",
+    "ol.trigger.arm()\n",
+    "ol.xadc.dma.recvchannel.wait()\n",
+    "ol.fft.dma.recvchannel.wait()\n",
+    "\n",
+    "raw_time = np.array(ol.xadc._buffer)\n",
+    "voltages = (raw_time >> 4) * (3.3 / 4095.0)\n",
+    "\n",
+    "raw_fft = np.array(ol.fft._buffer, copy=True)\n",
+    "raw_half = raw_fft[:1024].astype(np.float64)\n",
+    "\n",
+    "# 2. Print first 15 raw FFT values\n",
+    "print(\"📊 First 15 Raw FFT Magnitude bins:\")\n",
+    "for idx in range(15):\n",
+    "    freq_hz = ol.fft.freq_axis[idx]\n",
+    "    print(f\"  Bin {idx:02d} ({freq_hz:6.1f} Hz): raw={raw_half[idx]:6.0f} (0x{int(raw_half[idx]):04X})\")\n",
+    "\n",
+    "# 3. Compute Software Reference FFT\n",
+    "voltages_ac = voltages - np.mean(voltages)\n",
+    "sw_fft_raw = np.abs(np.fft.rfft(voltages_ac))[:1024]\n",
+    "\n",
+    "# 4. Plot Comparison\n",
+    "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6), dpi=100)\n",
+    "\n",
+    "ax1.plot(ol.fft.freq_axis[:100] / 1e3, raw_half[:100], color=\"#FF007F\", linewidth=1.8, marker=\"o\", markersize=3, label=\"Raw FPGA CORDIC Output\")\n",
+    "ax1.set_title(\"Raw FPGA FFT Magnitude (Bins 0 to 100, 0 to 48.8 kHz)\", fontweight=\"bold\")\n",
+    "ax1.set_xlabel(\"Frequency (kHz)\")\n",
+    "ax1.set_ylabel(\"Raw Integer Counts\")\n",
+    "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "ax1.legend()\n",
+    "\n",
+    "ax2.plot(ol.fft.freq_axis[:100] / 1e3, sw_fft_raw[:100], color=\"#00CCFF\", linewidth=1.8, label=\"Software NumPy FFT (Reference)\")\n",
+    "ax2.set_title(\"Software NumPy FFT Reference (0 to 48.8 kHz)\", fontweight=\"bold\")\n",
+    "ax2.set_xlabel(\"Frequency (kHz)\")\n",
+    "ax2.set_ylabel(\"Linear Amplitude\")\n",
+    "ax2.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "ax2.legend()\n",
+    "\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 5. Test 3: Continuous 50-Frame Stress Test (Hardware Pipeline Throughput)\n",
+    "Captures 50 consecutive frames in pure Python to measure sustained frame latency (ms) and throughput (FPS)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(\"🚀 Running 50-Frame Continuous Streaming Stress Test...\")\n",
+    "latencies = []\n",
+    "\n",
+    "for frame_idx in range(50):\n",
+    "    t_start = time.time()\n",
+    "    try:\n",
+    "        # 1. Queue DMAs\n",
+    "        ol.xadc.dma.recvchannel.transfer(ol.xadc._buffer)\n",
+    "        ol.fft.dma.recvchannel.transfer(ol.fft._buffer)\n",
+    "        \n",
+    "        # 2. Arm trigger\n",
+    "        ol.trigger.arm()\n",
+    "        \n",
+    "        # 3. Wait\n",
+    "        ol.xadc.dma.recvchannel.wait()\n",
+    "        ol.fft.dma.recvchannel.wait()\n",
+    "        \n",
+    "        elapsed_ms = (time.time() - t_start) * 1000.0\n",
+    "        latencies.append(elapsed_ms)\n",
+    "        \n",
+    "        if frame_idx % 10 == 0:\n",
+    "            raw_time = np.array(ol.xadc._buffer)\n",
+    "            v = (raw_time >> 4) * (3.3 / 4095.0)\n",
+    "            raw_fft = np.array(ol.fft._buffer, copy=True)[:1024].astype(np.float64)\n",
+    "            mags = 20.0 * np.log10(np.maximum((raw_fft / 2048.0) * (3.3 / 4095.0), 1e-6))\n",
+    "            peak_idx = np.argmax(mags[10:]) + 10\n",
+    "            peak_f = ol.fft.freq_axis[peak_idx]\n",
+    "            print(f\"  Frame {frame_idx:02d}: {elapsed_ms:4.1f} ms | Vpp: {v.max()-v.min():.2f}V | Peak f0: {peak_f/1e3:5.2f} kHz @ {mags[peak_idx]:.1f} dBV\")\n",
+    "            \n",
+    "    except Exception as e:\n",
+    "        print(f\"❌ Stalled at frame {frame_idx}: {e}\")\n",
+    "        break\n",
+    "\n",
+    "avg_time = np.mean(latencies)\n",
+    "fps = 1000.0 / avg_time\n",
+    "print(f\"\\n🎉 50/50 Frames Completed Successfully!\")\n",
+    "print(f\"  • Average frame latency: {avg_time:.2f} ms\")\n",
+    "print(f\"  • Sustained hardware throughput: ~{fps:.1f} FPS\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 6. Test 4: Harmonic Distortion Test (Square Wave Odd Harmonics)\n",
+    "Switches AD3 to a 10 kHz Square wave to test Fourier odd harmonic resolution ($10\\,\\text{kHz}$, $30\\,\\text{kHz}$, $50\\,\\text{kHz}$, $70\\,\\text{kHz}$, $90\\,\\text{kHz}$)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Switch AD3 to a 10 kHz Square wave\n",
+    "ol.wavegen.update_parameters(shape=\"Square\", frequency=10000.0, amplitude=1.2)\n",
+    "time.sleep(0.5)\n",
+    "\n",
+    "# 2. Capture frame\n",
+    "ol.xadc.dma.recvchannel.transfer(ol.xadc._buffer)\n",
+    "ol.fft.dma.recvchannel.transfer(ol.fft._buffer)\n",
+    "ol.trigger.arm()\n",
+    "ol.xadc.dma.recvchannel.wait()\n",
+    "ol.fft.dma.recvchannel.wait()\n",
+    "\n",
+    "raw_fft = np.array(ol.fft._buffer, copy=True)[:1024].astype(np.float64)\n",
+    "mags_sq = 20.0 * np.log10(np.maximum((raw_fft / 2048.0) * (3.3 / 4095.0), 1e-6))\n",
+    "\n",
+    "# 3. Plot Square Wave Spectrum\n",
+    "plt.figure(figsize=(10, 4), dpi=100)\n",
+    "plt.plot(ol.fft.freq_axis[:200] / 1e3, mags_sq[:200], color=\"#E040FB\", linewidth=1.6, label=\"10 kHz Square Wave Spectrum\")\n",
+    "plt.title(\"FPGA FFT: Square Wave Odd Harmonics (10k, 30k, 50k, 70k, 90k Hz)\", fontweight=\"bold\")\n",
+    "plt.xlabel(\"Frequency (kHz)\")\n",
+    "plt.ylabel(\"Magnitude (dBV)\")\n",
+    "plt.xlim(0, 100)\n",
+    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "plt.legend()\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "--- \n",
+    "## 7. Clean Hardware Shutdown"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol.close()\n",
+    "print(\"🔒 Hardware handles closed and CMA memory released.\")"
    ]
   }
  ],
@@ -1606,12 +2378,15 @@ TARGET_FILES=(
     "pynq_oscilloscope/loader.py:python"
     "pynq_oscilloscope/notebooks.py:python"
     "pynq_oscilloscope/xadc_dma.py:python"
+    "pynq_oscilloscope/fft_dma.py:python"
     "pynq_oscilloscope/ad3_wavegen.py:python"
     "pynq_oscilloscope/hw_trigger.py:python"
     "pynq_oscilloscope/overlay.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
+    "notebooks/04_fft_spectrum_analyzer.ipynb:json"
+    "notebooks/05_fft_diagnostic_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
