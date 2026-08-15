@@ -4,25 +4,25 @@ Git Context & Branch Info:
 Current Branch: feat/pl-fft
 Branch Tracking Status:
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-fft     48ab8f9 [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation
-  main            3aae7b1 [origin/main] docs(context): capture branch status and commit graph in SW context summary
+* feat/pl-fft     ddeef89 [origin/feat/pl-fft] chore(release): prepare v1.2.0 release documentation and package metadata
+  main            1fe66b9 [origin/main] chore: remove internal diagnostic test notebook from main release
 
 Git Commit Graph & History:
-* 48ab8f9  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation (SiririComun)
+* ddeef89  (HEAD -> feat/pl-fft, origin/feat/pl-fft) - 2026-08-15 : chore(release): prepare v1.2.0 release documentation and package metadata (SiririComun)
+* 48ab8f9  - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation (SiririComun)
 * 8c41477  - 2026-08-15 : feat(dashboard): finalize multi-tab instrument and clean notebook suite (SiririComun)
 * d3a7e29  - 2026-08-15 : docs(ui): add dual-view dashboard screenshots and PL FFT diagnostic test suite (SiririComun)
 * 1128463  - 2026-08-14 : perf(dashboard): optimize active-tab rendering to prevent DMA starvation (SiririComun)
 * 6d5e8b9  - 2026-08-14 : fix(dma): update default packet size to 2048 matching hardware FFT frame (SiririComun)
 * 1a24002  - 2026-08-14 : fix(dma): resolve broadcaster deadlock with synchronized dual DMA transfer (SiririComun)
 * 1dc5fea  - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
-* 3aae7b1  (origin/main, origin/HEAD, main) - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
+* 3aae7b1  - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
 * 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
 * cff6d3c  (origin/feat/hw-trigger, feat/hw-trigger) - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)
 * 24ba5f0  - 2026-08-13 : docs(context): track CI PyPI workflow and update SW summary (SiririComun)
 * 14f2e56  - 2026-08-13 : docs: update README with OscilloscopeOverlay API and hardware trigger architecture (SiririComun)
 * c35d0d1  - 2026-08-13 : feat(overlay): implement OscilloscopeOverlay and integrate HardwareTrigger UI (SiririComun)
-* f0408fe  - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)
-* 855fbe4  - 2026-08-10 : fix(ad3): enable dynamic DC offset updates in wavegen worker (SiririComun)```
+* f0408fe  - 2026-08-13 : feat(context): add SW context generation tools and sw_summary.txt (SiririComun)```
 
 Files structure: 
 
@@ -110,7 +110,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.2.0-rc1"
+    "version": "v1.2.0"
 }```
 
 setup.py:
@@ -126,7 +126,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.1.0",
+    version="1.2.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
