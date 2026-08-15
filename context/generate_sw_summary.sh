@@ -69,7 +69,6 @@ TARGET_FILES=(
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
-    "notebooks/05_fft_diagnostic_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
