@@ -1,17 +1,19 @@
 Git Context & Branch Info:
 
 ```log
-Current Branch: main
+Current Branch: feat/dual-xadc
 Branch Tracking Status:
+* feat/dual-xadc  35ea524 chore: remove internal diagnostic notebook from main release
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-fft     26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* main            9937f6d [origin/main: ahead 2] merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard
+  main            35ea524 [origin/main] chore: remove internal diagnostic notebook from main release
 
 Git Commit Graph & History:
-*   9937f6d  (HEAD -> main) - 2026-08-15 : merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard (SiririComun)
+* 35ea524  (HEAD -> feat/dual-xadc, tag: v1.2.0, origin/main, origin/HEAD, main) - 2026-08-15 : chore: remove internal diagnostic notebook from main release (SiririComun)
+*   9937f6d  - 2026-08-15 : merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard (SiririComun)
 |\  
 | * 26e459b  (origin/feat/pl-fft, feat/pl-fft) - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation (SiririComun)
-* | 1fe66b9  (tag: v1.2.0, origin/main, origin/HEAD) - 2026-08-15 : chore: remove internal diagnostic test notebook from main release (SiririComun)
+* | 1fe66b9  - 2026-08-15 : chore: remove internal diagnostic test notebook from main release (SiririComun)
 * | b9fe054  - 2026-08-15 : merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard (SiririComun)
 |\| 
 | * ddeef89  - 2026-08-15 : chore(release): prepare v1.2.0 release documentation and package metadata (SiririComun)
@@ -24,8 +26,7 @@ Git Commit Graph & History:
 | * 1dc5fea  - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
 |/  
 * 3aae7b1  - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
-* 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)
-* cff6d3c  (origin/feat/hw-trigger, feat/hw-trigger) - 2026-08-14 : docs: add dashboard screenshot and finalize UI guide for v1.1.0 (SiririComun)```
+* 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)```
 
 Files structure: 
 
@@ -112,7 +113,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.2.0"
+    "version": "v1.3.0-rc1"
 }```
 
 setup.py:
@@ -169,10 +170,6 @@ pydwf>=1.1.0```
 __init__.py:
 
 ```python
-"""
-pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope, Spectrum Analyzer & AD3 integration.
-"""
-
 from pynq_oscilloscope.overlay import OscilloscopeOverlay
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.loader import HardwareLoader
@@ -183,7 +180,7 @@ from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.2.0"
+__version__ = "1.3.0-rc1"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -195,7 +192,8 @@ __all__ = [
     "AD3SignalGenerator",
     "OscilloscopeDashboard",
     "copy_notebooks",
-]```
+]
+```
 
 dashboard.py:
 
@@ -665,6 +663,7 @@ import urllib.request
 from pathlib import Path
 from pynq import Overlay
 
+
 class HardwareLoader:
     """
     Smart Overlay Loader that detects the target board and pulls matching
@@ -683,7 +682,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.1.0-rc1"
+                "version": "v1.3.0-rc1"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -691,15 +690,13 @@ class HardwareLoader:
     @staticmethod
     def get_board_name() -> str:
         """
-        Detect active board running PYNQ across all PYNQ OS versions (v2.x, v3.x).
+        Detect active board running PYNQ across all PYNQ OS versions.
         Normalizes 'PYNQ-Z2' -> 'pynq_z2', 'ZedBoard' -> 'zedboard', etc.
         """
-        # 1. Check environment variable set by PYNQ OS ($BOARD)
         board_env = os.environ.get("BOARD")
         if board_env:
             return board_env.lower().replace("-", "_")
 
-        # 2. Check /etc/board.name if on PYNQ Linux
         try:
             if os.path.exists("/etc/board.name"):
                 with open("/etc/board.name", "r", encoding="utf-8") as f:
@@ -707,7 +704,6 @@ class HardwareLoader:
         except Exception:
             pass
 
-        # 3. Try pynq.Device active device name
         try:
             from pynq import Device
             if Device.active_device and Device.active_device.name:
@@ -715,7 +711,6 @@ class HardwareLoader:
         except Exception:
             pass
 
-        # Fallback default for PYNQ-Z2
         return "pynq_z2"
 
     @classmethod
@@ -726,7 +721,7 @@ class HardwareLoader:
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.1.0-rc1")
+        target_version = version or config.get("version", "v1.3.0-rc1")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
@@ -762,7 +757,7 @@ class HardwareLoader:
 
     @classmethod
     def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
-        """Backwards-compatible helper to load Overlay directly."""
+        """Helper to load Overlay directly."""
         bit_path = cls.get_overlay_path(version, download_dir)
         print(f"[HardwareLoader] Loading overlay: {bit_path}")
         return Overlay(str(bit_path))```
@@ -818,20 +813,18 @@ if __name__ == "__main__":
 xadc_dma.py:
 
 ```python
+from typing import Tuple
 import numpy as np
 from pynq import allocate
 
+
 class StreamingXADC:
     """
-    High-level driver for 1 MSPS XADC AXI-Stream & AXI DMA data acquisition.
-    Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
+    High-level driver for XADC AXI-Stream & AXI DMA data acquisition.
+    Supports Single-Channel (A0) and Simultaneous Dual-Channel (A0 & A1) streaming.
     """
 
     def __init__(self, overlay, default_packet_size: int = 2048):
-        """
-        Initialize the DMA controller from the loaded PYNQ overlay.
-        Default packet size is set to 16,384 to match the hardware packetizer.
-        """
         if hasattr(overlay, "axi_dma_0"):
             self.dma = overlay.axi_dma_0
         else:
@@ -841,34 +834,41 @@ class StreamingXADC:
             self.dma = getattr(overlay, dma_blocks[0])
 
         self.packet_size = default_packet_size
-        # Allocate contiguous CMA buffer ONCE outside capture loop
         self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
-    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+    def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Triggers a high-speed hardware DMA transfer (S2MM channel),
-        waits for completion, scales raw 12-bit left-aligned data to 0.0V - 3.3V,
-        and returns a NumPy array of physical voltages.
-        """
-        # 1. Command DMA to receive incoming stream into CMA RAM
-        self.dma.recvchannel.transfer(self._buffer)
+        Captures simultaneous interleaved stereo samples from XADC via DMA.
         
-        # 2. Block until hardware transfer completes (asserted by TLAST at packet end)
+        :return: (voltages_ch1_a0, voltages_ch2_a1) arrays of length packet_size / 2.
+        """
+        # 1. Trigger DMA transfer
+        self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
         
-        # 3. Cast to NumPy array
         raw_samples = np.array(self._buffer)
         
-        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V
-        voltages = (raw_samples >> 4) * (3.3 / 4095.0)
+        # 2. De-interleave: Even = Channel 1 (A0 / Vaux1), Odd = Channel 2 (A1 / Vaux9)
+        raw_ch1 = raw_samples[0::2]
+        raw_ch2 = raw_samples[1::2]
         
-        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
-            voltages = voltages[crop_startup_samples:]
+        # 3. Scale 12-bit left-aligned data (shift 4 right) to 0.0V - 3.3V
+        voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
+        voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
+        
+        if crop_startup_samples > 0:
+            voltages_ch1 = voltages_ch1[crop_startup_samples:]
+            voltages_ch2 = voltages_ch2[crop_startup_samples:]
             
-        return voltages
+        return voltages_ch1, voltages_ch2
+
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+        """Backwards-compatible single-channel capture (returns Channel 1 on A0)."""
+        v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
+        return v_ch1
 
     def close(self):
-        """Free contiguous memory allocation (CMA) buffer."""
+        """Free allocated contiguous memory (CMA) buffer."""
         if hasattr(self, "_buffer") and self._buffer is not None:
             try:
                 self._buffer.close()
@@ -1023,14 +1023,17 @@ ad3_wavegen.py:
 ```python
 import time
 import threading
-from typing import Optional
+from typing import Optional, Dict
 from pydwf import DwfLibrary, DwfAnalogOutFunction, DwfAnalogOutNode
 from pydwf.utilities import openDwfDevice
+
 
 class AD3SignalGenerator:
     """
     High-level, non-blocking multi-threaded wrapper for Digilent Analog Discovery 3 (AD3) Wavegen.
-    Executes physical signal generation in a background thread to keep Jupyter kernels responsive.
+    Supports concurrent dual-channel analog signal generation:
+      - Channel 1 (W1) -> PYNQ-Z2 Arduino Header Pin A0 (Vaux1)
+      - Channel 2 (W2) -> PYNQ-Z2 Arduino Header Pin A1 (Vaux9)
     """
 
     WAVEFORM_MAP = {
@@ -1046,12 +1049,34 @@ class AD3SignalGenerator:
         self._thread: Optional[threading.Thread] = None
         self._device_handle = None
         
-        # Target state parameters
-        self.shape_name = "Sine"
-        self.frequency = 10000.0  # 10 kHz
-        self.amplitude = 1.5      # 1.5V
-        self.offset = 1.65        # 1.65V
-        self.channel = 0          # Channel 1 (W1)
+        # Channel 1 Parameters (W1 -> Pin A0)
+        self.ch1 = {
+            "shape": "Sine",
+            "frequency": 1000.0,
+            "amplitude": 1.0,
+            "offset": 1.65,
+            "enabled": True
+        }
+        
+        # Channel 2 Parameters (W2 -> Pin A1)
+        self.ch2 = {
+            "shape": "Square",
+            "frequency": 5000.0,
+            "amplitude": 1.0,
+            "offset": 1.65,
+            "enabled": True
+        }
+
+    def _configure_channel(self, wavegen, ch_index: int, cfg: Dict):
+        """Applies hardware settings to a specific wavegen channel."""
+        func_enum = self.WAVEFORM_MAP.get(cfg["shape"], DwfAnalogOutFunction.Sine)
+        wavegen.nodeEnableSet(ch_index, DwfAnalogOutNode.Carrier, cfg["enabled"])
+        if cfg["enabled"]:
+            wavegen.nodeFunctionSet(ch_index, DwfAnalogOutNode.Carrier, func_enum)
+            wavegen.nodeFrequencySet(ch_index, DwfAnalogOutNode.Carrier, cfg["frequency"])
+            wavegen.nodeAmplitudeSet(ch_index, DwfAnalogOutNode.Carrier, cfg["amplitude"])
+            wavegen.nodeOffsetSet(ch_index, DwfAnalogOutNode.Carrier, cfg["offset"])
+        wavegen.configure(ch_index, cfg["enabled"])
 
     def _worker(self):
         """Background thread execution loop."""
@@ -1059,53 +1084,32 @@ class AD3SignalGenerator:
             self._device_handle = openDwfDevice(self.dwf)
             wavegen = self._device_handle.analogOut
             
-            # Initial configuration
-            func_enum = self.WAVEFORM_MAP.get(self.shape_name, DwfAnalogOutFunction.Sine)
-            wavegen.nodeEnableSet(self.channel, DwfAnalogOutNode.Carrier, True)
-            wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
-            wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, self.frequency)
-            wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, self.amplitude)
-            wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, self.offset)
+            # Initial hardware configuration for both channels
+            self._configure_channel(wavegen, 0, self.ch1)
+            self._configure_channel(wavegen, 1, self.ch2)
             
-            wavegen.configure(self.channel, True)
             self.is_ready = True
-            print("[AD3] Wavegen initialized and signal active.")
+            print("[AD3] Dual Wavegen active: W1 (CH1) -> A0, W2 (CH2) -> A1.")
             
-            prev_shape = self.shape_name
-            prev_freq = self.frequency
-            prev_amp = self.amplitude
-            prev_offset = self.offset
+            prev_ch1 = self.ch1.copy()
+            prev_ch2 = self.ch2.copy()
             
             while self.is_running:
-                # Track shape changes
-                if self.shape_name != prev_shape:
-                    prev_shape = self.shape_name
-                    func_enum = self.WAVEFORM_MAP.get(prev_shape, DwfAnalogOutFunction.Sine)
-                    wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
-                    wavegen.configure(self.channel, True)
+                # Track Channel 1 updates
+                if self.ch1 != prev_ch1:
+                    self._configure_channel(wavegen, 0, self.ch1)
+                    prev_ch1 = self.ch1.copy()
                     
-                # Track frequency changes
-                if self.frequency != prev_freq:
-                    prev_freq = self.frequency
-                    wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, prev_freq)
-                    wavegen.configure(self.channel, True)
-                    
-                # Track amplitude changes
-                if self.amplitude != prev_amp:
-                    prev_amp = self.amplitude
-                    wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, prev_amp)
-                    wavegen.configure(self.channel, True)
-
-                # Track offset changes (FIXED!)
-                if self.offset != prev_offset:
-                    prev_offset = self.offset
-                    wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, prev_offset)
-                    wavegen.configure(self.channel, True)
+                # Track Channel 2 updates
+                if self.ch2 != prev_ch2:
+                    self._configure_channel(wavegen, 1, self.ch2)
+                    prev_ch2 = self.ch2.copy()
                     
                 time.sleep(0.05)
                 
             self.is_ready = False
-            wavegen.configure(self.channel, False)
+            wavegen.configure(0, False)
+            wavegen.configure(1, False)
             if self._device_handle:
                 self._device_handle.close()
                 self._device_handle = None
@@ -1116,31 +1120,72 @@ class AD3SignalGenerator:
             self.is_ready = False
             self.is_running = False
 
-    def start(self, shape: str = "Sine", frequency: float = 10000.0, amplitude: float = 1.5, offset: float = 1.65):
+    def start(
+        self,
+        # Channel 1 parameters (W1 -> Pin A0)
+        shape: str = "Sine",
+        frequency: float = 1000.0,
+        amplitude: float = 1.0,
+        offset: float = 1.65,
+        # Channel 2 parameters (W2 -> Pin A1)
+        ch2_shape: str = "Square",
+        ch2_frequency: float = 5000.0,
+        ch2_amplitude: float = 1.0,
+        ch2_offset: float = 1.65,
+        enable_ch2: bool = True
+    ):
+        """Starts background dual-channel signal generation."""
         if self.is_running:
             print("[AD3] Wavegen is already running.")
             return
 
         self.is_ready = False
-        self.shape_name = shape
-        self.frequency = float(frequency)
-        self.amplitude = float(amplitude)
-        self.offset = float(offset)
+        self.ch1 = {
+            "shape": shape,
+            "frequency": float(frequency),
+            "amplitude": float(amplitude),
+            "offset": float(offset),
+            "enabled": True
+        }
+        self.ch2 = {
+            "shape": ch2_shape,
+            "frequency": float(ch2_frequency),
+            "amplitude": float(ch2_amplitude),
+            "offset": float(ch2_offset),
+            "enabled": bool(enable_ch2)
+        }
         self.is_running = True
         
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
-    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
-        """Dynamically update parameters (including DC offset) while active."""
+    def update_ch1(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Dynamically update Channel 1 (W1) parameters while active."""
         if shape is not None and shape in self.WAVEFORM_MAP:
-            self.shape_name = shape
+            self.ch1["shape"] = shape
         if frequency is not None:
-            self.frequency = float(frequency)
+            self.ch1["frequency"] = float(frequency)
         if amplitude is not None:
-            self.amplitude = float(amplitude)
+            self.ch1["amplitude"] = float(amplitude)
         if offset is not None:
-            self.offset = float(offset)
+            self.ch1["offset"] = float(offset)
+
+    def update_ch2(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None, enabled: bool = None):
+        """Dynamically update Channel 2 (W2) parameters while active."""
+        if shape is not None and shape in self.WAVEFORM_MAP:
+            self.ch2["shape"] = shape
+        if frequency is not None:
+            self.ch2["frequency"] = float(frequency)
+        if amplitude is not None:
+            self.ch2["amplitude"] = float(amplitude)
+        if offset is not None:
+            self.ch2["offset"] = float(offset)
+        if enabled is not None:
+            self.ch2["enabled"] = bool(enabled)
+
+    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Backwards-compatible update method for Channel 1."""
+        self.update_ch1(shape=shape, frequency=frequency, amplitude=amplitude, offset=offset)
 
     def stop(self):
         self.is_ready = False
@@ -1370,9 +1415,10 @@ from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
+
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 1 MSPS Oscilloscope & Spectrum Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel 1 MSPS Oscilloscope & Spectrum Analyzer.
     """
 
     def __init__(
@@ -1398,6 +1444,18 @@ class OscilloscopeOverlay(Overlay):
         self.fft = StreamingFFT(self, fft_points=fft_points)
         self.wavegen = AD3SignalGenerator()
 
+    def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+        """Captures simultaneous dual-channel time-domain waveforms (Ch1 on A0, Ch2 on A1)."""
+        return self.xadc.capture_stereo(crop_startup_samples=crop_startup_samples)
+
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+        """Captures Channel 1 (A0)."""
+        return self.xadc.capture(crop_startup_samples=crop_startup_samples)
+
+    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
+        """Captures hardware FFT spectrum from Channel 1."""
+        return self.fft.capture_spectrum(unit=unit)
+
     def capture_both(
         self,
         unit: str = "dBV",
@@ -1407,7 +1465,6 @@ class OscilloscopeOverlay(Overlay):
         """
         Synchronously captures both Time-Domain and Frequency-Domain frames using the Arm-on-Demand sequence.
         """
-        # Ensure channels are idle before arming
         t_wait = time.time()
         while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
             time.sleep(0.001)
@@ -1434,10 +1491,7 @@ class OscilloscopeOverlay(Overlay):
         self.fft.dma.recvchannel.wait()
 
         # 4. Process Time-Domain data
-        raw_time = np.array(self.xadc._buffer)
-        voltages = (raw_time >> 4) * (3.3 / 4095.0)
-        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
-            voltages = voltages[crop_startup_samples:]
+        voltages, _ = self.xadc.capture_stereo(crop_startup_samples=crop_startup_samples)
 
         # 5. Process Frequency-Domain data
         raw_fft = np.array(self.fft._buffer, copy=True)
@@ -1454,15 +1508,8 @@ class OscilloscopeOverlay(Overlay):
 
         return voltages, self.fft.freq_axis, mags
 
-    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
-        voltages, _, _ = self.capture_both(crop_startup_samples=crop_startup_samples)
-        return voltages
-
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        _, freqs, mags = self.capture_both(unit=unit)
-        return freqs, mags
-
     def dashboard(self, display_window: int = 1024):
+        """Launches interactive Dashboard."""
         from pynq_oscilloscope.dashboard import OscilloscopeDashboard
         dash = OscilloscopeDashboard(
             overlay=self,

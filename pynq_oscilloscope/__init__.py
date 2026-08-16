@@ -1,7 +1,3 @@
-"""
-pynq_oscilloscope: High-level Python library for PYNQ-Z2 Oscilloscope, Spectrum Analyzer & AD3 integration.
-"""
-
 from pynq_oscilloscope.overlay import OscilloscopeOverlay
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.loader import HardwareLoader
@@ -12,7 +8,7 @@ from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.2.0"
+__version__ = "1.3.0-rc1"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",

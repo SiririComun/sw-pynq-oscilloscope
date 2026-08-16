@@ -4,6 +4,7 @@ import urllib.request
 from pathlib import Path
 from pynq import Overlay
 
+
 class HardwareLoader:
     """
     Smart Overlay Loader that detects the target board and pulls matching
@@ -22,7 +23,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.1.0-rc1"
+                "version": "v1.3.0-rc1"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -30,15 +31,13 @@ class HardwareLoader:
     @staticmethod
     def get_board_name() -> str:
         """
-        Detect active board running PYNQ across all PYNQ OS versions (v2.x, v3.x).
+        Detect active board running PYNQ across all PYNQ OS versions.
         Normalizes 'PYNQ-Z2' -> 'pynq_z2', 'ZedBoard' -> 'zedboard', etc.
         """
-        # 1. Check environment variable set by PYNQ OS ($BOARD)
         board_env = os.environ.get("BOARD")
         if board_env:
             return board_env.lower().replace("-", "_")
 
-        # 2. Check /etc/board.name if on PYNQ Linux
         try:
             if os.path.exists("/etc/board.name"):
                 with open("/etc/board.name", "r", encoding="utf-8") as f:
@@ -46,7 +45,6 @@ class HardwareLoader:
         except Exception:
             pass
 
-        # 3. Try pynq.Device active device name
         try:
             from pynq import Device
             if Device.active_device and Device.active_device.name:
@@ -54,7 +52,6 @@ class HardwareLoader:
         except Exception:
             pass
 
-        # Fallback default for PYNQ-Z2
         return "pynq_z2"
 
     @classmethod
@@ -65,7 +62,7 @@ class HardwareLoader:
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.1.0-rc1")
+        target_version = version or config.get("version", "v1.3.0-rc1")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
@@ -101,7 +98,7 @@ class HardwareLoader:
 
     @classmethod
     def load_overlay(cls, version: str = None, download_dir: str = None) -> Overlay:
-        """Backwards-compatible helper to load Overlay directly."""
+        """Helper to load Overlay directly."""
         bit_path = cls.get_overlay_path(version, download_dir)
         print(f"[HardwareLoader] Loading overlay: {bit_path}")
         return Overlay(str(bit_path))
