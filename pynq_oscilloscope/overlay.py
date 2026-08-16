@@ -10,9 +10,10 @@ from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
+
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 1 MSPS Oscilloscope & Spectrum Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel 1 MSPS Oscilloscope & Spectrum Analyzer.
     """
 
     def __init__(
@@ -38,6 +39,18 @@ class OscilloscopeOverlay(Overlay):
         self.fft = StreamingFFT(self, fft_points=fft_points)
         self.wavegen = AD3SignalGenerator()
 
+    def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+        """Captures simultaneous dual-channel time-domain waveforms (Ch1 on A0, Ch2 on A1)."""
+        return self.xadc.capture_stereo(crop_startup_samples=crop_startup_samples)
+
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+        """Captures Channel 1 (A0)."""
+        return self.xadc.capture(crop_startup_samples=crop_startup_samples)
+
+    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
+        """Captures hardware FFT spectrum from Channel 1."""
+        return self.fft.capture_spectrum(unit=unit)
+
     def capture_both(
         self,
         unit: str = "dBV",
@@ -47,7 +60,6 @@ class OscilloscopeOverlay(Overlay):
         """
         Synchronously captures both Time-Domain and Frequency-Domain frames using the Arm-on-Demand sequence.
         """
-        # Ensure channels are idle before arming
         t_wait = time.time()
         while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
             time.sleep(0.001)
@@ -74,10 +86,7 @@ class OscilloscopeOverlay(Overlay):
         self.fft.dma.recvchannel.wait()
 
         # 4. Process Time-Domain data
-        raw_time = np.array(self.xadc._buffer)
-        voltages = (raw_time >> 4) * (3.3 / 4095.0)
-        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
-            voltages = voltages[crop_startup_samples:]
+        voltages, _ = self.xadc.capture_stereo(crop_startup_samples=crop_startup_samples)
 
         # 5. Process Frequency-Domain data
         raw_fft = np.array(self.fft._buffer, copy=True)
@@ -94,15 +103,8 @@ class OscilloscopeOverlay(Overlay):
 
         return voltages, self.fft.freq_axis, mags
 
-    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
-        voltages, _, _ = self.capture_both(crop_startup_samples=crop_startup_samples)
-        return voltages
-
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        _, freqs, mags = self.capture_both(unit=unit)
-        return freqs, mags
-
     def dashboard(self, display_window: int = 1024):
+        """Launches interactive Dashboard."""
         from pynq_oscilloscope.dashboard import OscilloscopeDashboard
         dash = OscilloscopeDashboard(
             overlay=self,
