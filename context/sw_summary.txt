@@ -3,13 +3,15 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/dual-xadc
 Branch Tracking Status:
-* feat/dual-xadc  35ea524 chore: remove internal diagnostic notebook from main release
+* feat/dual-xadc  2ce69ce [origin/feat/dual-xadc] chore(hw): pin hardware overlay to v1.3.0-rc1 and update loader
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-fft     26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   main            35ea524 [origin/main] chore: remove internal diagnostic notebook from main release
 
 Git Commit Graph & History:
-* 35ea524  (HEAD -> feat/dual-xadc, tag: v1.2.0, origin/main, origin/HEAD, main) - 2026-08-15 : chore: remove internal diagnostic notebook from main release (SiririComun)
+* 2ce69ce  (HEAD -> feat/dual-xadc, origin/feat/dual-xadc) - 2026-08-16 : chore(hw): pin hardware overlay to v1.3.0-rc1 and update loader (SiririComun)
+* 4c63090  - 2026-08-16 : feat(driver): implement dual-channel simultaneous XADC capture and dual AD3 wavegen (SiririComun)
+* 35ea524  (tag: v1.2.0, origin/main, origin/HEAD, main) - 2026-08-15 : chore: remove internal diagnostic notebook from main release (SiririComun)
 *   9937f6d  - 2026-08-15 : merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard (SiririComun)
 |\  
 | * 26e459b  (origin/feat/pl-fft, feat/pl-fft) - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation (SiririComun)
@@ -24,9 +26,7 @@ Git Commit Graph & History:
 | * 6d5e8b9  - 2026-08-14 : fix(dma): update default packet size to 2048 matching hardware FFT frame (SiririComun)
 | * 1a24002  - 2026-08-14 : fix(dma): resolve broadcaster deadlock with synchronized dual DMA transfer (SiririComun)
 | * 1dc5fea  - 2026-08-14 : feat(fft): implement StreamingFFT driver and multi-tab spectrum dashboard (SiririComun)
-|/  
-* 3aae7b1  - 2026-08-14 : docs(context): capture branch status and commit graph in SW context summary (SiririComun)
-* 2e8ceee  (tag: v1.1.0) - 2026-08-14 : ci: switch to PyPI Trusted Publishing via OIDC (SiririComun)```
+|/  ```
 
 Files structure: 
 
@@ -52,7 +52,8 @@ Files structure:
 │   ├── 01_ad3_getting_started.ipynb
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
-│   └── 04_fft_spectrum_analyzer.ipynb
+│   ├── 04_fft_spectrum_analyzer.ipynb
+│   └── 05_dual_channel_test.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── dashboard.py
@@ -68,7 +69,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 28 files
+8 directories, 29 files
 ```
 
 pypi.yml:
@@ -2053,6 +2054,199 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
+05_dual_channel_test.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 5: Dual-Channel Simultaneous XADC Acquisition Test\n",
+    "\n",
+    "This notebook verifies the **Simultaneous Dual-Channel XADC architecture** on the PYNQ-Z2 (`v1.3.0-rc1`).\n",
+    "\n",
+    "### Hardware Wiring Check:\n",
+    "* **AD3 W1 (Yellow)** $\\rightarrow$ **PYNQ-Z2 A0** (Channel 1 / `Vaux1`)\n",
+    "* **AD3 W2 (Yellow/White)** $\\rightarrow$ **PYNQ-Z2 A1** (Channel 2 / `Vaux9`)\n",
+    "* **AD3 GND (Black)** $\\rightarrow$ **PYNQ-Z2 GND**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. System Setup & Permission Check"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
+    "import matplotlib.pyplot as plt\n",
+    "import numpy as np\n",
+    "import time\n",
+    "\n",
+    "# Ensure USB permissions for AD3 communication\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Load the Dual-Channel Hardware Overlay\n",
+    "Instantiating `OscilloscopeOverlay()` automatically fetches `v1.3.0-rc1` containing the simultaneous dual-ADC streaming engine."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol = OscilloscopeOverlay()\n",
+    "print(\"✅ Dual-Channel Oscilloscope Overlay loaded successfully!\")\n",
+    "print(\"Active Trigger Configuration:\", ol.trigger)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Generate Dual Test Tones with AD3 Wavegen\n",
+    "We start two distinct test signals:\n",
+    "* **W1 $\\rightarrow$ A0:** $1\\,\\text{kHz}$ Sine wave ($1.0\\,\\text{V}$ Amplitude, $1.65\\,\\text{V}$ DC Offset)\n",
+    "* **W2 $\\rightarrow$ A1:** $5\\,\\text{kHz}$ Square wave ($1.0\\,\\text{V}$ Amplitude, $1.65\\,\\text{V}$ DC Offset)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Start Dual-Channel Signal Generation\n",
+    "ol.wavegen.start(\n",
+    "    shape=\"Sine\", frequency=1000.0, amplitude=1.0, offset=1.65,        # Channel 1 (W1 -> A0)\n",
+    "    ch2_shape=\"Square\", ch2_frequency=5000.0, ch2_amplitude=1.0, ch2_offset=1.65, # Channel 2 (W2 -> A1)\n",
+    "    enable_ch2=True\n",
+    ")\n",
+    "time.sleep(1.0)\n",
+    "print(\"✅ AD3 active: W1 (1 kHz Sine) -> A0, W2 (5 kHz Square) -> A1\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Configure Hardware Trigger\n",
+    "Configure the FPGA trigger unit to trigger on the rising edge of Channel 1 (A0) at $1.65\\,\\text{V}$."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol.trigger.configure(mode=\"Auto\", edge=\"Rising\", threshold_volts=1.65, timeout_ms=50.0)\n",
+    "print(f\"Hardware Trigger Threshold: {ol.trigger.get_threshold():.2f} V\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Simultaneous Dual-Channel DMA Capture\n",
+    "Capture both channels synchronously via `ol.capture_stereo()`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Capture 1024 simultaneous sample pairs (1.024 ms window)\n",
+    "v_ch1, v_ch2 = ol.capture_stereo()\n",
+    "\n",
+    "print(f\"Captured {len(v_ch1)} sample pairs simultaneously!\")\n",
+    "print(f\"  • CH1 (A0 - Sine)   : Min = {v_ch1.min():.2f} V, Max = {v_ch1.max():.2f} V, Vpp = {v_ch1.max()-v_ch1.min():.2f} V\")\n",
+    "print(f\"  • CH2 (A1 - Square) : Min = {v_ch2.min():.2f} V, Max = {v_ch2.max():.2f} V, Vpp = {v_ch2.max()-v_ch2.min():.2f} V\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6. Waveform Visualization\n",
+    "Plot both channels side-by-side to verify time-alignment and signal fidelity."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6), sharex=True, dpi=100)\n",
+    "\n",
+    "time_us = np.arange(len(v_ch1))\n",
+    "\n",
+    "# Channel 1 (A0)\n",
+    "ax1.plot(time_us[:500], v_ch1[:500], color=\"#00FFCC\", linewidth=1.8, label=\"CH1: A0 (1 kHz Sine)\")\n",
+    "ax1.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"Trigger (1.65V)\")\n",
+    "ax1.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
+    "ax1.set_ylim(0.0, 3.3)\n",
+    "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "ax1.legend(loc=\"upper right\")\n",
+    "ax1.set_title(\"Dual-Channel Simultaneous Acquisition (1 MSPS)\", fontsize=12, fontweight=\"bold\")\n",
+    "\n",
+    "# Channel 2 (A1)\n",
+    "ax2.plot(time_us[:500], v_ch2[:500], color=\"#FF007F\", linewidth=1.8, label=\"CH2: A1 (5 kHz Square)\")\n",
+    "ax2.set_xlabel(\"Time (Microseconds @ 1 MSPS)\", fontsize=10)\n",
+    "ax2.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
+    "ax2.set_ylim(0.0, 3.3)\n",
+    "ax2.grid(True, linestyle=\"--\", alpha=0.5)\n",
+    "ax2.legend(loc=\"upper right\")\n",
+    "\n",
+    "plt.tight_layout()\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 7. Clean Hardware Shutdown"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol.close()\n",
+    "print(\"🔒 AD3 Wavegen stopped and overlay handles cleanly closed.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
 generate_sw_summary.sh:
 
 ```bash
@@ -2127,6 +2321,7 @@ TARGET_FILES=(
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
+    "notebooks/05_dual_channel_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
