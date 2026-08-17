@@ -3,13 +3,14 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/dual-xadc
 Branch Tracking Status:
-* feat/dual-xadc  05efd58 [origin/feat/dual-xadc] feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range
+* feat/dual-xadc  5c619cc [origin/feat/dual-xadc] fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry
   feat/hw-trigger cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-fft     26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   main            35ea524 [origin/main] chore: remove internal diagnostic notebook from main release
 
 Git Commit Graph & History:
-* 05efd58  (HEAD -> feat/dual-xadc, origin/feat/dual-xadc) - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)
+* 5c619cc  (HEAD -> feat/dual-xadc, origin/feat/dual-xadc) - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)
+* 05efd58  - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)
 * 60a756a  - 2026-08-16 : feat(dashboard): add 4-tab dual-channel instrument and selectable hardware trigger source (SiririComun)
 * 547c906  - 2026-08-16 : feat(dashboard): implement real-time dual-channel oscilloscope and dual wavegen UI (SiririComun)
 * 4e8fb23  - 2026-08-16 : test(notebook): update 05_dual_channel_test with hardened XADC sequencer init and dual-channel verification (SiririComun)
@@ -24,8 +25,7 @@ Git Commit Graph & History:
 * | 1fe66b9  - 2026-08-15 : chore: remove internal diagnostic test notebook from main release (SiririComun)
 * | b9fe054  - 2026-08-15 : merge: feat(fft) release v1.2.0 with Real-Time Spectrum Analyzer and Tabbed Dashboard (SiririComun)
 |\| 
-| * ddeef89  - 2026-08-15 : chore(release): prepare v1.2.0 release documentation and package metadata (SiririComun)
-| * 48ab8f9  - 2026-08-15 : chore(release): bump version to 1.2.0, pin hardware v1.2.0, and update documentation (SiririComun)```
+| * ddeef89  - 2026-08-15 : chore(release): prepare v1.2.0 release documentation and package metadata (SiririComun)```
 
 Files structure: 
 
@@ -37,7 +37,12 @@ Files structure:
 ├── docs
 │   ├── AD3_SETUP.md
 │   └── images
+│       ├── dashboard_ch1_view.png
+│       ├── dashboard_ch2_view.png
+│       ├── dashboard_dual_fft.png
 │       ├── dashboard_dual_highfreq.png
+│       ├── dashboard_dual_scope_a0.png
+│       ├── dashboard_dual_scope_a1.png
 │       ├── dashboard_dual_sine.png
 │       ├── dashboard_dual_square.png
 │       └── dashboard_screenshot.png
@@ -68,7 +73,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 29 files
+8 directories, 34 files
 ```
 
 pypi.yml:
