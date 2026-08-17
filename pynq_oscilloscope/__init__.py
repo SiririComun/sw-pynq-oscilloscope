@@ -8,7 +8,7 @@ from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.3.0-rc1"
+__version__ = "1.3.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
