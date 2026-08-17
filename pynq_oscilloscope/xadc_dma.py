@@ -1,17 +1,15 @@
+from typing import Tuple
 import numpy as np
 from pynq import allocate
 
+
 class StreamingXADC:
     """
-    High-level driver for 1 MSPS XADC AXI-Stream & AXI DMA data acquisition.
-    Dynamically binds to the DMA block via .hwh metadata without hardcoded addresses.
+    High-level driver for XADC AXI-Stream & AXI DMA data acquisition.
+    Supports Single-Channel (A0) and Simultaneous Dual-Channel (A0 & A1) streaming.
     """
 
     def __init__(self, overlay, default_packet_size: int = 2048):
-        """
-        Initialize the DMA controller from the loaded PYNQ overlay.
-        Default packet size is set to 16,384 to match the hardware packetizer.
-        """
         if hasattr(overlay, "axi_dma_0"):
             self.dma = overlay.axi_dma_0
         else:
@@ -21,34 +19,41 @@ class StreamingXADC:
             self.dma = getattr(overlay, dma_blocks[0])
 
         self.packet_size = default_packet_size
-        # Allocate contiguous CMA buffer ONCE outside capture loop
         self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
-    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+    def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Triggers a high-speed hardware DMA transfer (S2MM channel),
-        waits for completion, scales raw 12-bit left-aligned data to 0.0V - 3.3V,
-        and returns a NumPy array of physical voltages.
-        """
-        # 1. Command DMA to receive incoming stream into CMA RAM
-        self.dma.recvchannel.transfer(self._buffer)
+        Captures simultaneous interleaved stereo samples from XADC via DMA.
         
-        # 2. Block until hardware transfer completes (asserted by TLAST at packet end)
+        :return: (voltages_ch1_a0, voltages_ch2_a1) arrays of length packet_size / 2.
+        """
+        # 1. Trigger DMA transfer
+        self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
         
-        # 3. Cast to NumPy array
         raw_samples = np.array(self._buffer)
         
-        # 4. Scale 12-bit left-aligned data (shift 4 right) to 0V - 3.3V
-        voltages = (raw_samples >> 4) * (3.3 / 4095.0)
+        # 2. De-interleave: Even = Channel 1 (A0 / Vaux1), Odd = Channel 2 (A1 / Vaux9)
+        raw_ch1 = raw_samples[0::2]
+        raw_ch2 = raw_samples[1::2]
         
-        if crop_startup_samples > 0 and len(voltages) > crop_startup_samples:
-            voltages = voltages[crop_startup_samples:]
+        # 3. Scale 12-bit left-aligned data (shift 4 right) to 0.0V - 3.3V
+        voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
+        voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
+        
+        if crop_startup_samples > 0:
+            voltages_ch1 = voltages_ch1[crop_startup_samples:]
+            voltages_ch2 = voltages_ch2[crop_startup_samples:]
             
-        return voltages
+        return voltages_ch1, voltages_ch2
+
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+        """Backwards-compatible single-channel capture (returns Channel 1 on A0)."""
+        v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
+        return v_ch1
 
     def close(self):
-        """Free contiguous memory allocation (CMA) buffer."""
+        """Free allocated contiguous memory (CMA) buffer."""
         if hasattr(self, "_buffer") and self._buffer is not None:
             try:
                 self._buffer.close()

@@ -1,3 +1,7 @@
+"""
+pynq_oscilloscope.dashboard: Interactive Real-Time 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer UI.
+"""
+
 import time
 import threading
 from typing import Optional
@@ -6,16 +10,19 @@ import numpy as np
 import ipywidgets as widgets
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from pynq import allocate
 
 from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
+
 class OscilloscopeDashboard:
     """
-    High-Performance Multi-Tab Oscilloscope & Spectrum Analyzer Dashboard.
-    Integrates FPGA Hardware Triggering, 1 MSPS DMA acquisition, 2048-pt PL FFT, and AD3 wavegen.
+    4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard.
+    Features dynamic trigger line placement (moves to A0 or A1 based on trigger source),
+    1 MSPS interleaved dual-DMA streaming, and dual-channel FFT analysis.
     """
 
     def __init__(
@@ -27,6 +34,8 @@ class OscilloscopeDashboard:
     ):
         self.overlay = overlay
         self.packet_size = packet_size
+        self.num_pts_per_ch = packet_size // 2  # 1024 samples per channel
+        self.fs_per_ch = 500_000.0              # 500 kSPS per channel
         self.fft_points = fft_points
         self.display_window = display_window
         
@@ -34,8 +43,12 @@ class OscilloscopeDashboard:
         self._single_done = False
         self._thread: Optional[threading.Thread] = None
         
-        # Attach or instantiate sub-drivers
-        if self.overlay and hasattr(self.overlay, "wavegen"):
+        # Stop any dangling wavegen handles
+        if self.overlay and hasattr(self.overlay, "wavegen") and self.overlay.wavegen:
+            try:
+                self.overlay.wavegen.stop()
+            except Exception:
+                pass
             self.ad3 = self.overlay.wavegen
         else:
             self.ad3 = AD3SignalGenerator()
@@ -67,290 +80,450 @@ class OscilloscopeDashboard:
         self._setup_callbacks()
 
     def _build_ui(self):
-        # 1. Action Buttons
-        self.start_btn = widgets.Button(description="Start", button_style="success", icon="play")
-        self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop")
-        self.force_btn = widgets.Button(description="Force / Arm", button_style="warning", icon="bolt")
-        self.clear_log_btn = widgets.Button(description="Clear Log", button_style="", icon="trash")
-        self.autorange_toggle = widgets.ToggleButton(value=True, description="Auto-Range", button_style="info")
+        # 1. Action Row & Real-Time Metric Readouts
+        self.start_btn = widgets.Button(
+            description="Start Live", button_style="success", icon="play", layout=widgets.Layout(width="115px")
+        )
+        self.stop_btn = widgets.Button(
+            description="Stop", button_style="danger", icon="stop", layout=widgets.Layout(width="95px")
+        )
+        self.force_btn = widgets.Button(
+            description="Force / Arm", button_style="warning", icon="bolt", layout=widgets.Layout(width="115px")
+        )
+        self.clear_log_btn = widgets.Button(
+            description="Clear Log", button_style="", icon="trash", layout=widgets.Layout(width="100px")
+        )
+        self.autorange_toggle = widgets.ToggleButton(
+            value=True, description="Auto-Range", button_style="info", layout=widgets.Layout(width="110px")
+        )
 
-        self.readout_vpp = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:15px; font-weight:bold;'>Live Vpp: 0.00 V</span>")
-        self.readout_f0 = widgets.HTML("<span style='color:#FF007F; font-family:monospace; font-size:15px; font-weight:bold;'>Peak f0: 0.0 kHz</span>")
+        self.readout_ch1 = widgets.HTML(
+            "<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>A0: Vpp=0.00V | f0=0.0kHz</span>"
+        )
+        self.readout_ch2 = widgets.HTML(
+            "<span style='color:#FF007F; font-family:monospace; font-size:13px; font-weight:bold;'>A1: Vpp=0.00V | f0=0.0kHz</span>"
+        )
 
-        # 2. AD3 Waveform Controls
-        self.shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Sine", description="Waveform:", layout=widgets.Layout(width="200px"))
-        self.freq_slider = widgets.IntSlider(value=10000, min=100, max=250000, step=100, description="Freq Slider:", continuous_update=False, layout=widgets.Layout(width="350px"))
-        self.freq_input = widgets.BoundedIntText(value=10000, min=100, max=250000, step=100, description="Exact Freq:", layout=widgets.Layout(width="180px"))
-        widgets.jslink((self.freq_slider, "value"), (self.freq_input, "value"))
-
-        self.amp_slider = widgets.FloatSlider(value=1.5, min=0.1, max=1.5, step=0.1, description="Amp Slider:", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.amp_input = widgets.BoundedFloatText(value=1.5, min=0.1, max=1.5, step=0.1, description="Exact Amp:", layout=widgets.Layout(width="150px"))
-        widgets.jslink((self.amp_slider, "value"), (self.amp_input, "value"))
-
-        # 3. Trigger Controls
-        self.trig_mode_dd = widgets.Dropdown(options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px"))
-        self.trig_edge_dd = widgets.Dropdown(options=["Rising", "Falling"], value="Rising", description="Trig Edge:", layout=widgets.Layout(width="180px"))
-        self.trig_level_slider = widgets.FloatSlider(value=1.65, min=0.0, max=3.3, step=0.05, description="Trig Level:", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.trig_level_input = widgets.BoundedFloatText(value=1.65, min=0.0, max=3.3, step=0.05, description="Exact Level:", layout=widgets.Layout(width="150px"))
+        # 2. Trigger Controls
+        self.trig_mode_dd = widgets.Dropdown(
+            options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px")
+        )
+        self.trig_edge_dd = widgets.Dropdown(
+            options=["Rising", "Falling"], value="Rising", description="Trig Edge:", layout=widgets.Layout(width="180px")
+        )
+        self.trig_src_dd = widgets.Dropdown(
+            options=["CH1 (A0)", "CH2 (A1)"], value="CH1 (A0)", description="Trig Source:", layout=widgets.Layout(width="190px")
+        )
+        self.trig_level_slider = widgets.FloatSlider(
+            value=1.65, min=0.0, max=3.3, step=0.05, description="Trig Level:", continuous_update=False, layout=widgets.Layout(width="220px")
+        )
+        self.trig_level_input = widgets.BoundedFloatText(
+            value=1.65, min=0.0, max=3.3, step=0.05, layout=widgets.Layout(width="80px")
+        )
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
-        # 4. FFT Controls
-        self.fft_unit_dd = widgets.Dropdown(options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px"))
-        self.fft_span_dd = widgets.Dropdown(options=[("Full (500 kHz)", 500000), ("100 kHz", 100000), ("20 kHz", 20000)], value=100000, description="Span / Zoom:", layout=widgets.Layout(width="210px"))
+        # 3. Channel 1 Controls (W1 -> A0)
+        self.ch1_shape_dd = widgets.Dropdown(
+            options=["Sine", "Triangle", "Square"], value="Sine", description="CH1 (A0):", layout=widgets.Layout(width="180px")
+        )
+        self.ch1_amp_slider = widgets.FloatSlider(
+            value=1.5, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px")
+        )
+        self.ch1_freq_slider = widgets.IntSlider(
+            value=10000, min=50, max=100000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px")
+        )
+        self.ch1_freq_input = widgets.BoundedIntText(
+            value=10000, min=50, max=100000, step=50, layout=widgets.Layout(width="95px")
+        )
+        widgets.jslink((self.ch1_freq_slider, "value"), (self.ch1_freq_input, "value"))
+
+        # 4. Channel 2 Controls (W2 -> A1) - Perfectly symmetric with Channel 1
+        self.ch2_shape_dd = widgets.Dropdown(
+            options=["Sine", "Triangle", "Square"], value="Square", description="CH2 (A1):", layout=widgets.Layout(width="180px")
+        )
+        self.ch2_amp_slider = widgets.FloatSlider(
+            value=1.5, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px")
+        )
+        self.ch2_freq_slider = widgets.IntSlider(
+            value=25000, min=50, max=100000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px")
+        )
+        self.ch2_freq_input = widgets.BoundedIntText(
+            value=25000, min=50, max=100000, step=50, layout=widgets.Layout(width="95px")
+        )
+        widgets.jslink((self.ch2_freq_slider, "value"), (self.ch2_freq_input, "value"))
+
+        # 5. FFT Controls
+        self.fft_unit_dd = widgets.Dropdown(
+            options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px")
+        )
+        self.fft_span_dd = widgets.Dropdown(
+            options=[("Full (250 kHz)", 250000), ("100 kHz", 100000), ("20 kHz", 20000)],
+            value=250000, description="Span / Zoom:", layout=widgets.Layout(width="210px")
+        )
 
     def _build_plots(self):
-        # 1. Scope Figure (Tab 1)
-        self.fig_scope = go.FigureWidget()
-        self.fig_scope.add_scatter(x=list(range(500)), y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=2), name="A0 (Time)")
-        self.fig_scope.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.5, dash="dash"), name="Threshold")
-        self.fig_scope.update_layout(title="<b>Real-Time 1 MSPS Oscilloscope</b>", template="plotly_dark", height=420, margin=dict(l=40,r=20,t=45,b=35), uirevision="scope")
-        self.fig_scope.update_yaxes(range=[0, 3.5], title="Voltage (V)")
-        self.fig_scope.update_xaxes(title="Time (µs @ 1 MSPS)")
+        initial_time = np.arange(500)
+        initial_freq = np.linspace(0, 250000, 513)
 
-        # 2. Spectrum Figure (Tab 2)
-        initial_freqs = self.fft.freq_axis if self.fft else np.linspace(0, 500000, 1024)
-        self.fig_spectrum = go.FigureWidget()
-        self.fig_spectrum.add_scatter(x=initial_freqs, y=[-100]*len(initial_freqs), mode="lines", line=dict(color="#FF007F", width=1.8), name="PL FFT Spectrum")
-        self.fig_spectrum.add_scatter(x=[10000], y=[-40], mode="markers+text", marker=dict(color="#00FFCC", size=8, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak")
-        self.fig_spectrum.update_layout(title="<b>Real-Time PL-Accelerated Spectrum Analyzer (2048-pt FFT)</b>", template="plotly_dark", height=420, margin=dict(l=40,r=20,t=45,b=35), uirevision="spectrum")
-        self.fig_spectrum.update_yaxes(range=[-110, 0], title="Magnitude (dBV)")
-        self.fig_spectrum.update_xaxes(range=[0, 100000], title="Frequency (Hz)")
+        # Tab 1: Dual Scope (A0 Top, A1 Bottom)
+        # Trace 0: A0 (Row 1)
+        # Trace 1: Trigger Line on A0 (Row 1)
+        # Trace 2: A1 (Row 2)
+        # Trace 3: Trigger Line on A1 (Row 2)
+        self.fig_dual_scope = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
+            subplot_titles=("<b>Channel 1: A0 (Time Domain)</b>", "<b>Channel 2: A1 (Time Domain)</b>")
+        )
+        self.fig_dual_scope = go.FigureWidget(self.fig_dual_scope)
+        self.fig_dual_scope.add_scatter(x=initial_time, y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0", row=1, col=1)
+        self.fig_dual_scope.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A0)", row=1, col=1)
+        self.fig_dual_scope.add_scatter(x=initial_time, y=[1.65]*500, mode="lines", line=dict(color="#FF007F", width=1.8), name="A1", row=2, col=1)
+        self.fig_dual_scope.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A1)", visible=False, row=2, col=1)
+        self.fig_dual_scope.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t1")
+        self.fig_dual_scope.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
+        self.fig_dual_scope.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=2, col=1)
+        self.fig_dual_scope.update_xaxes(title="Time (µs @ 500 kSPS)", row=2, col=1)
 
-        # 3. Dual View Figure (Tab 3)
-        self.fig_dual = make_subplots(rows=2, cols=1, vertical_spacing=0.15, subplot_titles=("<b>Oscilloscope (Time Domain)</b>", "<b>Spectrum Analyzer (Frequency Domain)</b>"))
-        self.fig_dual = go.FigureWidget(self.fig_dual)
-        self.fig_dual.add_scatter(x=list(range(500)), y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=1.8), row=1, col=1)
-        self.fig_dual.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), row=1, col=1)
-        self.fig_dual.add_scatter(x=initial_freqs, y=[-100]*len(initial_freqs), mode="lines", line=dict(color="#FF007F", width=1.6), row=2, col=1)
-        self.fig_dual.update_layout(template="plotly_dark", height=530, showlegend=False, margin=dict(l=40,r=20,t=45,b=35), uirevision="dual")
-        self.fig_dual.update_yaxes(range=[0, 3.5], title="Voltage (V)", row=1, col=1)
-        self.fig_dual.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_dual.update_xaxes(title="Time (µs)", row=1, col=1)
-        self.fig_dual.update_xaxes(range=[0, 100000], title="Frequency (Hz)", row=2, col=1)
+        # Tab 2: Dual Spectrum (FFT A0 Top, FFT A1 Bottom)
+        self.fig_dual_fft = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
+            subplot_titles=("<b>Channel 1: A0 Spectrum (FFT)</b>", "<b>Channel 2: A1 Spectrum (FFT)</b>")
+        )
+        self.fig_dual_fft = go.FigureWidget(self.fig_dual_fft)
+        self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 FFT", row=1, col=1)
+        self.fig_dual_fft.add_scatter(x=[1000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
+        self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 FFT", row=2, col=1)
+        self.fig_dual_fft.add_scatter(x=[5000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
+        self.fig_dual_fft.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t2")
+        self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=1, col=1)
+        self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
+        self.fig_dual_fft.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
+
+        # Tab 3: Channel 1 View (A0 Time Top, A0 FFT Bottom)
+        self.fig_ch1_view = make_subplots(
+            rows=2, cols=1, vertical_spacing=0.15,
+            subplot_titles=("<b>Channel 1: A0 (Time Domain)</b>", "<b>Channel 1: A0 (Frequency Domain)</b>")
+        )
+        self.fig_ch1_view = go.FigureWidget(self.fig_ch1_view)
+        self.fig_ch1_view.add_scatter(x=initial_time, y=[1.65]*500, mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 Time", row=1, col=1)
+        self.fig_ch1_view.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
+        self.fig_ch1_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 FFT", row=2, col=1)
+        self.fig_ch1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t3")
+        self.fig_ch1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
+        self.fig_ch1_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
+        self.fig_ch1_view.update_xaxes(title="Time (µs)", row=1, col=1)
+        self.fig_ch1_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
+
+        # Tab 4: Channel 2 View (A1 Time Top with Trigger, A1 FFT Bottom)
+        self.fig_ch2_view = make_subplots(
+            rows=2, cols=1, vertical_spacing=0.15,
+            subplot_titles=("<b>Channel 2: A1 (Time Domain)</b>", "<b>Channel 2: A1 (Frequency Domain)</b>")
+        )
+        self.fig_ch2_view = go.FigureWidget(self.fig_ch2_view)
+        self.fig_ch2_view.add_scatter(x=initial_time, y=[1.65]*500, mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 Time", row=1, col=1)
+        self.fig_ch2_view.add_scatter(x=[0, 500], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
+        self.fig_ch2_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 FFT", row=2, col=1)
+        self.fig_ch2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t4")
+        self.fig_ch2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
+        self.fig_ch2_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
+        self.fig_ch2_view.update_xaxes(title="Time (µs)", row=1, col=1)
+        self.fig_ch2_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab Container
-        self.tabs = widgets.Tab(children=[self.fig_scope, self.fig_spectrum, self.fig_dual])
-        self.tabs.set_title(0, "📈 Oscilloscope")
-        self.tabs.set_title(1, "📊 Spectrum Analyzer")
-        self.tabs.set_title(2, "🔀 Dual View")
+        self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_ch1_view, self.fig_ch2_view])
+        self.tabs.set_title(0, "📈 Dual Scope (A0 & A1)")
+        self.tabs.set_title(1, "📊 Dual FFT (A0 & A1)")
+        self.tabs.set_title(2, "🔀 Channel 1 (A0)")
+        self.tabs.set_title(3, "🔀 Channel 2 (A1)")
 
     def _setup_callbacks(self):
-        self.start_btn.on_click(self._on_start_clicked)
-        self.stop_btn.on_click(self._on_stop_clicked)
-        self.force_btn.on_click(self._on_force_clicked)
-        self.clear_log_btn.on_click(self._on_clear_log_clicked)
+        self.start_btn.on_click(lambda _: self.start())
+        self.stop_btn.on_click(lambda _: self.stop())
+        self.force_btn.on_click(lambda _: self._on_force_clicked())
+        self.clear_log_btn.on_click(lambda _: self._on_clear_log_clicked())
 
-        self.shape_dd.observe(lambda _: self._update_wavegen_params(), names="value")
-        self.freq_slider.observe(lambda _: self._update_wavegen_params(), names="value")
-        self.amp_slider.observe(lambda _: self._update_wavegen_params(), names="value")
-        self.trig_level_slider.observe(lambda _: self._update_hardware_threshold(), names="value")
-        self.trig_mode_dd.observe(self._on_mode_or_edge_change, names="value")
-        self.trig_edge_dd.observe(self._on_mode_or_edge_change, names="value")
+        self.ch1_shape_dd.observe(lambda _: self._update_wavegen(), names="value")
+        self.ch1_freq_slider.observe(lambda _: self._update_wavegen(), names="value")
+        self.ch1_amp_slider.observe(lambda _: self._update_wavegen(), names="value")
 
-    def _update_wavegen_params(self):
-        self.ad3.update_parameters(shape=self.shape_dd.value, frequency=float(self.freq_slider.value), amplitude=float(self.amp_slider.value))
+        self.ch2_shape_dd.observe(lambda _: self._update_wavegen(), names="value")
+        self.ch2_freq_slider.observe(lambda _: self._update_wavegen(), names="value")
+        self.ch2_amp_slider.observe(lambda _: self._update_wavegen(), names="value")
 
-    def _update_hardware_threshold(self):
+        self.trig_level_slider.observe(lambda _: self._update_trig_level(), names="value")
+        self.trig_mode_dd.observe(self._on_trig_param_change, names="value")
+        self.trig_edge_dd.observe(self._on_trig_param_change, names="value")
+        self.trig_src_dd.observe(self._on_trig_param_change, names="value")
+
+    def _update_trig_level(self):
         if self.trigger:
             self.trigger.set_threshold(float(self.trig_level_slider.value))
 
-    def _get_arm_control_word(self):
+    def _update_wavegen(self):
+        if self.ad3:
+            self.ad3.update_ch1(
+                shape=self.ch1_shape_dd.value,
+                frequency=float(self.ch1_freq_slider.value),
+                amplitude=float(self.ch1_amp_slider.value),
+                offset=1.65
+            )
+            self.ad3.update_ch2(
+                shape=self.ch2_shape_dd.value,
+                frequency=float(self.ch2_freq_slider.value),
+                amplitude=float(self.ch2_amp_slider.value),
+                offset=1.65,
+                enabled=True
+            )
+
+    def _get_arm_control_word(self) -> int:
+        """
+        Computes the register control word.
+        Bit 5 is mapped such that 'CH1 (A0)' triggers A0 and 'CH2 (A1)' triggers A1.
+        """
         is_falling = (self.trig_edge_dd.value == "Falling")
+        is_ch1 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
         mode = self.trig_mode_dd.value
-        ctrl = (1 << 0) | (1 << 3)  # Bit 0: ARM, Bit 3: SINGLE SHOT
+        
+        # Base: Bit 0 = ARM, Bit 3 = SINGLE SHOT
+        ctrl = (1 << 0) | (1 << 3)
         if is_falling:
             ctrl |= (1 << 2)        # Bit 2: FALLING EDGE
         if mode == "Auto":
-            ctrl |= (1 << 1)        # Bit 1: AUTO TIMEOUT ENABLED
+            ctrl |= (1 << 1)        # Bit 1: AUTO TIMEOUT
+        if is_ch1:
+            ctrl |= (1 << 5)        # Inverted hardware routing: 1 = CH1 (A0), 0 = CH2 (A1)
         return ctrl
 
-    def _on_mode_or_edge_change(self, _):
+    def _on_trig_param_change(self, _):
         if self.trig_mode_dd.value != "Single":
             self._single_done = False
         if self._is_running and self.trigger:
             self.trigger.mmio.write(0x00, self._get_arm_control_word())
 
-    def _on_start_clicked(self, _):
-        self.start()
-
-    def _on_stop_clicked(self, _):
-        self.stop()
-
-    def _on_force_clicked(self, _):
+    def _on_force_clicked(self):
         if self.trig_mode_dd.value == "Single":
             self._single_done = False
         if self.trigger:
             self.trigger.force_trigger()
 
-    def _on_clear_log_clicked(self, _):
+    def _on_clear_log_clicked(self):
         clear_output(wait=True)
         display(widgets.VBox([self.control_panel, self.tabs]))
 
     def _update_loop(self):
-        """Universal Arm-on-Demand Acquisition Loop."""
+        """High-Performance Synchronized Dual-DMA Acquisition Loop."""
+        dma_time = self.overlay.axi_dma_0
+        dma_fft = self.overlay.axi_dma_1
+        trig = self.trigger
+
+        # 1. Initialize XADC continuous sequencer for Vaux1 (A0) and Vaux9 (A1)
+        if hasattr(self.overlay, "xadc_wiz_0"):
+            xadc = self.overlay.xadc_wiz_0.mmio
+            xadc.write(0x304, 0x2000)  # DRP 0x41 = 0x2000 (Continuous Sequence Mode)
+            xadc.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
+            xadc.write(0x324, 0x0202)  # DRP 0x49 = Enable Vaux1 (bit 1) and Vaux9 (bit 9)
+
+        # 2. Reset DMAs
+        dma_time.mmio.write(0x30, 0x04)
+        dma_fft.mmio.write(0x30, 0x04)
+        time.sleep(0.01)
+        dma_time.recvchannel.start()
+        dma_fft.recvchannel.start()
+
+        # 3. Configure Trigger
+        if trig:
+            trig.mmio.write(0x0C, 5000000)  # 50ms Auto-Timeout @ 100MHz clock
+            self._update_trig_level()
+
+        # 4. Start AD3 Dual Wavegen (Both W1 and W2 always enabled)
+        self.ad3.start(
+            shape=self.ch1_shape_dd.value,
+            frequency=float(self.ch1_freq_slider.value),
+            amplitude=float(self.ch1_amp_slider.value),
+            offset=1.65,
+            ch2_shape=self.ch2_shape_dd.value,
+            ch2_frequency=float(self.ch2_freq_slider.value),
+            ch2_amplitude=float(self.ch2_amp_slider.value),
+            ch2_offset=1.65,
+            enable_ch2=True
+        )
+        wait_start = time.time()
+        while self._is_running and not self.ad3.is_ready:
+            time.sleep(0.05)
+            if time.time() - wait_start > 3.0:
+                break
+
+        print(f"[Dashboard] Dual Acquisition active | Source: {self.trig_src_dd.value} | Mode: {self.trig_mode_dd.value}")
+
+        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
+        buf_fft = allocate(shape=(self.packet_size,), dtype="u2")
         dma_armed = False
+
+        freqs = np.fft.rfftfreq(self.num_pts_per_ch, d=1.0 / self.fs_per_ch)
+
         try:
-            # Configure 50ms Timeout and Threshold
-            if self.trigger:
-                self.trigger.mmio.write(0x0C, 5000000)
-                self._update_hardware_threshold()
-
-            # Start AD3 Wavegen
-            self.ad3.start(shape=self.shape_dd.value, frequency=float(self.freq_slider.value), amplitude=float(self.amp_slider.value), offset=1.65)
-            wait_start = time.time()
-            while self._is_running and not self.ad3.is_ready:
-                time.sleep(0.05)
-                if time.time() - wait_start > 3.0:
-                    break
-
-            print(f"[Dashboard] Acquisition active | Mode: {self.trig_mode_dd.value} | Signal: {self.shape_dd.value} @ {self.freq_slider.value} Hz")
-
             while self._is_running:
                 mode = self.trig_mode_dd.value
 
-                # Single-Shot hold
                 if mode == "Single" and self._single_done:
                     time.sleep(0.02)
                     continue
 
-                # 1. Arm both DMAs exactly ONCE per frame
+                # 5. Queue BOTH DMAs FIRST (Prevents Broadcaster Deadlock)
                 if not dma_armed:
-                    self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
-                    self.fft.dma.recvchannel.transfer(self.fft._buffer)
-                    self.trigger.mmio.write(0x00, self._get_arm_control_word())
+                    dma_time.recvchannel.transfer(buf_time)
+                    dma_fft.recvchannel.transfer(buf_fft)
+                    trig.mmio.write(0x00, self._get_arm_control_word())
                     dma_armed = True
 
-                # 2. Check if hardware frame completed
-                if self.xadc.dma.recvchannel.idle and self.fft.dma.recvchannel.idle:
+                # 6. Check hardware completion
+                if dma_time.recvchannel.idle and dma_fft.recvchannel.idle:
                     dma_armed = False
-                    
-                    # Process Time Data
-                    raw_time = np.array(self.xadc._buffer)
-                    voltages = (raw_time >> 4) * (3.3 / 4095.0)
 
-                    # Process FFT Data
-                    raw_fft = np.array(self.fft._buffer, copy=True)[:1024].astype(np.float64)
-                    unit_mode = self.fft_unit_dd.value
-                    if unit_mode == "Linear":
-                        mags = (raw_fft / 2048.0) * (3.3 / 4095.0) * 1000.0
-                    elif unit_mode == "dBFS":
-                        mags = 20.0 * np.log10(np.maximum(raw_fft, 1.0) / 65535.0)
+                    # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
+                    raw_time = np.array(buf_time)
+                    v_a0 = (raw_time[0::2] >> 4) * (3.3 / 4095.0)
+                    v_a1 = (raw_time[1::2] >> 4) * (3.3 / 4095.0)
+
+                    # Compute Fast FFT for both channels
+                    fft_a0 = np.abs(np.fft.rfft(v_a0 - np.mean(v_a0))) / (self.num_pts_per_ch / 2.0)
+                    fft_a1 = np.abs(np.fft.rfft(v_a1 - np.mean(v_a1))) / (self.num_pts_per_ch / 2.0)
+
+                    unit = self.fft_unit_dd.value
+                    if unit == "dBV":
+                        mag_a0 = 20.0 * np.log10(np.maximum(fft_a0, 1e-6))
+                        mag_a1 = 20.0 * np.log10(np.maximum(fft_a1, 1e-6))
+                    elif unit == "dBFS":
+                        mag_a0 = 20.0 * np.log10(np.maximum(fft_a0 / 1.65, 1e-6))
+                        mag_a1 = 20.0 * np.log10(np.maximum(fft_a1 / 1.65, 1e-6))
                     else:
-                        linear_v = (raw_fft / 2048.0) * (3.3 / 4095.0)
-                        mags = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
+                        mag_a0 = fft_a0 * 1000.0
+                        mag_a1 = fft_a1 * 1000.0
 
-                    # Peak tracking
-                    peak_idx = np.argmax(mags[10:]) + 10
-                    peak_f = self.fft.freq_axis[peak_idx]
-                    peak_m = mags[peak_idx]
+                    vpp1 = float(np.max(v_a0) - np.min(v_a0))
+                    vpp2 = float(np.max(v_a1) - np.min(v_a1))
 
-                    # Auto-Range Slicing
-                    vpp = float(np.max(voltages) - np.min(voltages))
-                    freq_val = float(self.freq_slider.value)
-                    
+                    p_idx1 = np.argmax(mag_a0[5:]) + 5
+                    p_idx2 = np.argmax(mag_a1[5:]) + 5
+                    peak_f1 = freqs[p_idx1]
+                    peak_f2 = freqs[p_idx2]
+
+                    # Auto-range window based on the selected trigger channel's frequency
+                    is_trig_a0 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
                     if self.autorange_toggle.value:
-                        period_us = 1e6 / freq_val if freq_val > 0 else 1000
-                        show_pts = int(5 * period_us) if vpp > 0.1 else 500
-                        show_pts = max(40, min(show_pts, 1024, len(voltages)))
+                        f_ref = float(self.ch1_freq_slider.value) if is_trig_a0 else float(self.ch2_freq_slider.value)
+                        period_pts = int(self.fs_per_ch / f_ref) if f_ref > 0 else 500
+                        show_pts = max(40, min(5 * period_pts, 500, len(v_a0)))
                     else:
                         show_pts = 500
 
-                    plot_v = voltages[:show_pts]
-                    time_x = np.arange(len(plot_v))
+                    t_x = np.arange(show_pts) * (1e6 / self.fs_per_ch)  # Microseconds
+                    p_v1 = v_a0[:show_pts]
+                    p_v2 = v_a1[:show_pts]
                     trig_v = float(self.trig_level_slider.value)
                     active_tab = self.tabs.selected_index
                     max_span = float(self.fft_span_dd.value)
 
                     # Update Active Tab
-                    if active_tab == 0:
-                        with self.fig_scope.batch_update():
-                            self.fig_scope.data[0].x = time_x
-                            self.fig_scope.data[0].y = plot_v
-                            self.fig_scope.data[1].x = [0, len(plot_v)]
-                            self.fig_scope.data[1].y = [trig_v, trig_v]
-                            if self.autorange_toggle.value and vpp > 0.1:
-                                amp = float(self.amp_slider.value)
-                                self.fig_scope.layout.xaxis.range = [0, len(plot_v)]
-                                self.fig_scope.layout.yaxis.range = [max(0.0, 1.65 - (amp + 0.25)), min(3.5, 1.65 + (amp + 0.25))]
-                            elif self.autorange_toggle.value:
-                                self.fig_scope.layout.yaxis.range = [0, 3.5]
+                    if active_tab == 0:  # Tab 1: Dual Scope
+                        with self.fig_dual_scope.batch_update():
+                            self.fig_dual_scope.data[0].x = t_x
+                            self.fig_dual_scope.data[0].y = p_v1
+                            self.fig_dual_scope.data[2].x = t_x
+                            self.fig_dual_scope.data[2].y = p_v2
 
-                    elif active_tab == 1:
-                        with self.fig_spectrum.batch_update():
-                            self.fig_spectrum.data[0].x = self.fft.freq_axis
-                            self.fig_spectrum.data[0].y = mags
-                            self.fig_spectrum.data[1].x = [peak_f]
-                            self.fig_spectrum.data[1].y = [peak_m]
-                            self.fig_spectrum.data[1].text = [f" {peak_f/1e3:.1f} kHz ({peak_m:.1f} {unit_mode})"]
-                            self.fig_spectrum.layout.xaxis.range = [0, max_span]
-                            self.fig_spectrum.layout.yaxis.title = f"Magnitude ({unit_mode})"
+                            # Move trigger line to A0 or A1 depending on selection
+                            if is_trig_a0:
+                                self.fig_dual_scope.data[1].x = [0, t_x[-1]]
+                                self.fig_dual_scope.data[1].y = [trig_v, trig_v]
+                                self.fig_dual_scope.data[1].visible = True
+                                self.fig_dual_scope.data[3].visible = False
+                            else:
+                                self.fig_dual_scope.data[3].x = [0, t_x[-1]]
+                                self.fig_dual_scope.data[3].y = [trig_v, trig_v]
+                                self.fig_dual_scope.data[3].visible = True
+                                self.fig_dual_scope.data[1].visible = False
 
-                    elif active_tab == 2:
-                        with self.fig_dual.batch_update():
-                            self.fig_dual.data[0].x = time_x
-                            self.fig_dual.data[0].y = plot_v
-                            self.fig_dual.data[1].x = [0, len(plot_v)]
-                            self.fig_dual.data[1].y = [trig_v, trig_v]
-                            self.fig_dual.data[2].x = self.fft.freq_axis
-                            self.fig_dual.data[2].y = mags
-                            self.fig_dual.layout.xaxis2.range = [0, max_span]
+                            self.fig_dual_scope.layout.xaxis2.range = [0, t_x[-1]]
 
-                    # Digital Readouts
-                    mode_tag = " <span style='color:#FFA500;'>(LOCKED)</span>" if mode == "Single" else ""
-                    self.readout_vpp.value = f"<span style='color:#00FFCC; font-family:monospace; font-size:15px; font-weight:bold;'>Live Vpp: {vpp:.2f} V{mode_tag}</span>"
-                    self.readout_f0.value = f"<span style='color:#FF007F; font-family:monospace; font-size:15px; font-weight:bold;'>Peak f0: {peak_f/1e3:.2f} kHz</span>"
+                    elif active_tab == 1:  # Tab 2: Dual FFT
+                        with self.fig_dual_fft.batch_update():
+                            self.fig_dual_fft.data[0].x = freqs
+                            self.fig_dual_fft.data[0].y = mag_a0
+                            self.fig_dual_fft.data[1].x = [peak_f1]
+                            self.fig_dual_fft.data[1].y = [mag_a0[p_idx1]]
+                            self.fig_dual_fft.data[1].text = [f" {peak_f1/1e3:.1f} kHz"]
+                            self.fig_dual_fft.data[2].x = freqs
+                            self.fig_dual_fft.data[2].y = mag_a1
+                            self.fig_dual_fft.data[3].x = [peak_f2]
+                            self.fig_dual_fft.data[3].y = [mag_a1[p_idx2]]
+                            self.fig_dual_fft.data[3].text = [f" {peak_f2/1e3:.1f} kHz"]
+                            self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
+
+                    elif active_tab == 2:  # Tab 3: Channel 1 View (A0)
+                        with self.fig_ch1_view.batch_update():
+                            self.fig_ch1_view.data[0].x = t_x
+                            self.fig_ch1_view.data[0].y = p_v1
+                            self.fig_ch1_view.data[1].x = [0, t_x[-1]]
+                            self.fig_ch1_view.data[1].y = [trig_v, trig_v]
+                            self.fig_ch1_view.data[2].x = freqs
+                            self.fig_ch1_view.data[2].y = mag_a0
+                            self.fig_ch1_view.layout.xaxis2.range = [0, max_span]
+
+                    elif active_tab == 3:  # Tab 4: Channel 2 View (A1)
+                        with self.fig_ch2_view.batch_update():
+                            self.fig_ch2_view.data[0].x = t_x
+                            self.fig_ch2_view.data[0].y = p_v2
+                            self.fig_ch2_view.data[1].x = [0, t_x[-1]]
+                            self.fig_ch2_view.data[1].y = [trig_v, trig_v]
+                            self.fig_ch2_view.data[2].x = freqs
+                            self.fig_ch2_view.data[2].y = mag_a1
+                            self.fig_ch2_view.layout.xaxis2.range = [0, max_span]
+
+                    # Status Bar Readouts
+                    mode_tag = " (LOCKED)" if mode == "Single" else ""
+                    self.readout_ch1.value = (
+                        f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>"
+                        f"A0: Vpp={vpp1:.2f}V | f0={peak_f1/1e3:.1f}kHz{mode_tag}</span>"
+                    )
+                    self.readout_ch2.value = (
+                        f"<span style='color:#FF007F; font-family:monospace; font-size:13px; font-weight:bold;'>"
+                        f"A1: Vpp={vpp2:.2f}V | f0={peak_f2/1e3:.1f}kHz</span>"
+                    )
 
                     if mode == "Single":
                         self._single_done = True
 
-                    time.sleep(0.033)
-
+                    time.sleep(0.033)  # Target ~30 FPS
                 else:
-                    time.sleep(0.01)
+                    time.sleep(0.005)
 
-        except Exception as e:
-            print(f"[Dashboard] Error: {e}")
         finally:
             self._is_running = False
-            if dma_armed:
-                try:
-                    self.xadc.dma.mmio.write(0x30, 0x04)
-                    self.fft.dma.mmio.write(0x30, 0x04)
-                except Exception:
-                    pass
+            buf_time.close()
+            buf_fft.close()
             self.ad3.stop()
             print("[Dashboard] Stopped cleanly.")
 
     def start(self):
-        if self._is_running:
-            return
-        
-        print("[Dashboard] Starting acquisition...")
-        self._single_done = False
-        self.ad3.stop()
-        try:
-            self.xadc.dma.mmio.write(0x30, 0x04)
-            self.fft.dma.mmio.write(0x30, 0x04)
-            time.sleep(0.01)
-            self.xadc.dma.recvchannel.start()
-            self.fft.dma.recvchannel.start()
-        except Exception:
-            pass
-
-        self._is_running = True
-        self._thread = threading.Thread(target=self._update_loop, daemon=True)
-        self._thread.start()
+        if not self._is_running:
+            self._is_running = True
+            self._single_done = False
+            self._thread = threading.Thread(target=self._update_loop, daemon=True)
+            self._thread.start()
 
     def stop(self):
         self._is_running = False
         self._single_done = False
 
     def display(self):
-        ctrl_row1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.clear_log_btn, self.autorange_toggle, self.readout_vpp, self.readout_f0], layout=widgets.Layout(align_items="center", gap="10px", margin="0 0 10px 0"))
-        ctrl_row2 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_level_slider, self.trig_level_input])
-        ctrl_row3 = widgets.HBox([self.shape_dd, self.amp_slider, self.amp_input])
-        ctrl_row4 = widgets.HBox([self.freq_slider, self.freq_input])
-        ctrl_row5 = widgets.HBox([self.fft_unit_dd, self.fft_span_dd])
-
-        self.control_panel = widgets.VBox([ctrl_row1, ctrl_row2, ctrl_row3, ctrl_row4, ctrl_row5], layout=widgets.Layout(margin="0 0 15px 0"))
+        r1 = widgets.HBox(
+            [self.start_btn, self.stop_btn, self.force_btn, self.autorange_toggle, self.clear_log_btn, self.readout_ch1, self.readout_ch2],
+            layout=widgets.Layout(gap="10px", margin="0 0 8px 0")
+        )
+        r2 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_src_dd, self.trig_level_slider, self.trig_level_input])
+        r3 = widgets.HBox([self.ch1_shape_dd, self.ch1_amp_slider, self.ch1_freq_slider, self.ch1_freq_input])
+        r4 = widgets.HBox([self.ch2_shape_dd, self.ch2_amp_slider, self.ch2_freq_slider, self.ch2_freq_input])
+        r5 = widgets.HBox([self.fft_unit_dd, self.fft_span_dd])
+        self.control_panel = widgets.VBox([r1, r2, r3, r4, r5], layout=widgets.Layout(margin="0 0 12px 0"))
         display(widgets.VBox([self.control_panel, self.tabs]))

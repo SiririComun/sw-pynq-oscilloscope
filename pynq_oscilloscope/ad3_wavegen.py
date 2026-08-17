@@ -1,13 +1,16 @@
 import time
 import threading
-from typing import Optional
+from typing import Optional, Dict
 from pydwf import DwfLibrary, DwfAnalogOutFunction, DwfAnalogOutNode
 from pydwf.utilities import openDwfDevice
+
 
 class AD3SignalGenerator:
     """
     High-level, non-blocking multi-threaded wrapper for Digilent Analog Discovery 3 (AD3) Wavegen.
-    Executes physical signal generation in a background thread to keep Jupyter kernels responsive.
+    Supports concurrent dual-channel analog signal generation:
+      - Channel 1 (W1) -> PYNQ-Z2 Arduino Header Pin A0 (Vaux1)
+      - Channel 2 (W2) -> PYNQ-Z2 Arduino Header Pin A1 (Vaux9)
     """
 
     WAVEFORM_MAP = {
@@ -23,12 +26,34 @@ class AD3SignalGenerator:
         self._thread: Optional[threading.Thread] = None
         self._device_handle = None
         
-        # Target state parameters
-        self.shape_name = "Sine"
-        self.frequency = 10000.0  # 10 kHz
-        self.amplitude = 1.5      # 1.5V
-        self.offset = 1.65        # 1.65V
-        self.channel = 0          # Channel 1 (W1)
+        # Channel 1 Parameters (W1 -> Pin A0)
+        self.ch1 = {
+            "shape": "Sine",
+            "frequency": 1000.0,
+            "amplitude": 1.0,
+            "offset": 1.65,
+            "enabled": True
+        }
+        
+        # Channel 2 Parameters (W2 -> Pin A1)
+        self.ch2 = {
+            "shape": "Square",
+            "frequency": 5000.0,
+            "amplitude": 1.0,
+            "offset": 1.65,
+            "enabled": True
+        }
+
+    def _configure_channel(self, wavegen, ch_index: int, cfg: Dict):
+        """Applies hardware settings to a specific wavegen channel."""
+        func_enum = self.WAVEFORM_MAP.get(cfg["shape"], DwfAnalogOutFunction.Sine)
+        wavegen.nodeEnableSet(ch_index, DwfAnalogOutNode.Carrier, cfg["enabled"])
+        if cfg["enabled"]:
+            wavegen.nodeFunctionSet(ch_index, DwfAnalogOutNode.Carrier, func_enum)
+            wavegen.nodeFrequencySet(ch_index, DwfAnalogOutNode.Carrier, cfg["frequency"])
+            wavegen.nodeAmplitudeSet(ch_index, DwfAnalogOutNode.Carrier, cfg["amplitude"])
+            wavegen.nodeOffsetSet(ch_index, DwfAnalogOutNode.Carrier, cfg["offset"])
+        wavegen.configure(ch_index, cfg["enabled"])
 
     def _worker(self):
         """Background thread execution loop."""
@@ -36,53 +61,32 @@ class AD3SignalGenerator:
             self._device_handle = openDwfDevice(self.dwf)
             wavegen = self._device_handle.analogOut
             
-            # Initial configuration
-            func_enum = self.WAVEFORM_MAP.get(self.shape_name, DwfAnalogOutFunction.Sine)
-            wavegen.nodeEnableSet(self.channel, DwfAnalogOutNode.Carrier, True)
-            wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
-            wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, self.frequency)
-            wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, self.amplitude)
-            wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, self.offset)
+            # Initial hardware configuration for both channels
+            self._configure_channel(wavegen, 0, self.ch1)
+            self._configure_channel(wavegen, 1, self.ch2)
             
-            wavegen.configure(self.channel, True)
             self.is_ready = True
-            print("[AD3] Wavegen initialized and signal active.")
+            print("[AD3] Dual Wavegen active: W1 (CH1) -> A0, W2 (CH2) -> A1.")
             
-            prev_shape = self.shape_name
-            prev_freq = self.frequency
-            prev_amp = self.amplitude
-            prev_offset = self.offset
+            prev_ch1 = self.ch1.copy()
+            prev_ch2 = self.ch2.copy()
             
             while self.is_running:
-                # Track shape changes
-                if self.shape_name != prev_shape:
-                    prev_shape = self.shape_name
-                    func_enum = self.WAVEFORM_MAP.get(prev_shape, DwfAnalogOutFunction.Sine)
-                    wavegen.nodeFunctionSet(self.channel, DwfAnalogOutNode.Carrier, func_enum)
-                    wavegen.configure(self.channel, True)
+                # Track Channel 1 updates
+                if self.ch1 != prev_ch1:
+                    self._configure_channel(wavegen, 0, self.ch1)
+                    prev_ch1 = self.ch1.copy()
                     
-                # Track frequency changes
-                if self.frequency != prev_freq:
-                    prev_freq = self.frequency
-                    wavegen.nodeFrequencySet(self.channel, DwfAnalogOutNode.Carrier, prev_freq)
-                    wavegen.configure(self.channel, True)
-                    
-                # Track amplitude changes
-                if self.amplitude != prev_amp:
-                    prev_amp = self.amplitude
-                    wavegen.nodeAmplitudeSet(self.channel, DwfAnalogOutNode.Carrier, prev_amp)
-                    wavegen.configure(self.channel, True)
-
-                # Track offset changes (FIXED!)
-                if self.offset != prev_offset:
-                    prev_offset = self.offset
-                    wavegen.nodeOffsetSet(self.channel, DwfAnalogOutNode.Carrier, prev_offset)
-                    wavegen.configure(self.channel, True)
+                # Track Channel 2 updates
+                if self.ch2 != prev_ch2:
+                    self._configure_channel(wavegen, 1, self.ch2)
+                    prev_ch2 = self.ch2.copy()
                     
                 time.sleep(0.05)
                 
             self.is_ready = False
-            wavegen.configure(self.channel, False)
+            wavegen.configure(0, False)
+            wavegen.configure(1, False)
             if self._device_handle:
                 self._device_handle.close()
                 self._device_handle = None
@@ -93,31 +97,72 @@ class AD3SignalGenerator:
             self.is_ready = False
             self.is_running = False
 
-    def start(self, shape: str = "Sine", frequency: float = 10000.0, amplitude: float = 1.5, offset: float = 1.65):
+    def start(
+        self,
+        # Channel 1 parameters (W1 -> Pin A0)
+        shape: str = "Sine",
+        frequency: float = 1000.0,
+        amplitude: float = 1.0,
+        offset: float = 1.65,
+        # Channel 2 parameters (W2 -> Pin A1)
+        ch2_shape: str = "Square",
+        ch2_frequency: float = 5000.0,
+        ch2_amplitude: float = 1.0,
+        ch2_offset: float = 1.65,
+        enable_ch2: bool = True
+    ):
+        """Starts background dual-channel signal generation."""
         if self.is_running:
             print("[AD3] Wavegen is already running.")
             return
 
         self.is_ready = False
-        self.shape_name = shape
-        self.frequency = float(frequency)
-        self.amplitude = float(amplitude)
-        self.offset = float(offset)
+        self.ch1 = {
+            "shape": shape,
+            "frequency": float(frequency),
+            "amplitude": float(amplitude),
+            "offset": float(offset),
+            "enabled": True
+        }
+        self.ch2 = {
+            "shape": ch2_shape,
+            "frequency": float(ch2_frequency),
+            "amplitude": float(ch2_amplitude),
+            "offset": float(ch2_offset),
+            "enabled": bool(enable_ch2)
+        }
         self.is_running = True
         
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
-    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
-        """Dynamically update parameters (including DC offset) while active."""
+    def update_ch1(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Dynamically update Channel 1 (W1) parameters while active."""
         if shape is not None and shape in self.WAVEFORM_MAP:
-            self.shape_name = shape
+            self.ch1["shape"] = shape
         if frequency is not None:
-            self.frequency = float(frequency)
+            self.ch1["frequency"] = float(frequency)
         if amplitude is not None:
-            self.amplitude = float(amplitude)
+            self.ch1["amplitude"] = float(amplitude)
         if offset is not None:
-            self.offset = float(offset)
+            self.ch1["offset"] = float(offset)
+
+    def update_ch2(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None, enabled: bool = None):
+        """Dynamically update Channel 2 (W2) parameters while active."""
+        if shape is not None and shape in self.WAVEFORM_MAP:
+            self.ch2["shape"] = shape
+        if frequency is not None:
+            self.ch2["frequency"] = float(frequency)
+        if amplitude is not None:
+            self.ch2["amplitude"] = float(amplitude)
+        if offset is not None:
+            self.ch2["offset"] = float(offset)
+        if enabled is not None:
+            self.ch2["enabled"] = bool(enabled)
+
+    def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
+        """Backwards-compatible update method for Channel 1."""
+        self.update_ch1(shape=shape, frequency=frequency, amplitude=amplitude, offset=offset)
 
     def stop(self):
         self.is_ready = False
