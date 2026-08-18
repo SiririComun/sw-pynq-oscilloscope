@@ -1,5 +1,5 @@
 """
-pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Oscilloscope & Spectrum Analyzer.
+pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Oscilloscope & Audio Spectrum Analyzer.
 """
 
 from pathlib import Path
@@ -13,11 +13,13 @@ from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+from pynq_oscilloscope.dashboard import OscilloscopeDashboard
+from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel 1 MSPS Oscilloscope & Spectrum Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel 1 MSPS Oscilloscope & 50 kSPS Audio Spectrum Analyzer.
     """
 
     def __init__(
@@ -40,7 +42,7 @@ class OscilloscopeOverlay(Overlay):
         
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
-        self.fft = StreamingFFT(self, fft_points=fft_points)
+        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=50_000.0)
         self.wavegen = AD3SignalGenerator()
 
     def capture_stereo(
@@ -49,7 +51,7 @@ class OscilloscopeOverlay(Overlay):
         timeout: float = 1.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Synchronously captures dual-channel time-domain waveforms (Ch1 on A0, Ch2 on A1)
+        Synchronously captures dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
         while servicing both DMA engines to prevent broadcaster deadlock.
         """
         # 1. Reset channels if busy
@@ -98,7 +100,7 @@ class OscilloscopeOverlay(Overlay):
         return v_ch1
 
     def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware FFT spectrum from Channel 1."""
+        """Captures hardware decimated audio FFT spectrum from Channel 1."""
         return self.fft.capture_spectrum(unit=unit)
 
     def capture_both(
@@ -128,12 +130,22 @@ class OscilloscopeOverlay(Overlay):
         return voltages_ch1, self.fft.freq_axis, mags
 
     def dashboard(self, display_window: int = 1024):
-        from pynq_oscilloscope.dashboard import OscilloscopeDashboard
+        """Launches the general Oscilloscope Dashboard (AD3 Wavegen + Laboratory Scope)."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
             fft_points=self.fft_points,
             display_window=display_window
+        )
+        dash.display()
+        return dash
+
+    def audio_dashboard(self):
+        """Launches the dedicated Audio & Microphone Dashboard (50 kSPS Decimated Audio)."""
+        dash = AudioDashboard(
+            overlay=self,
+            packet_size=self.packet_size,
+            fft_points=self.fft_points
         )
         dash.display()
         return dash
