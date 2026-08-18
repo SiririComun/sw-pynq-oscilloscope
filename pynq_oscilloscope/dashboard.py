@@ -22,7 +22,7 @@ class OscilloscopeDashboard:
     """
     4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard.
     Features dynamic trigger line placement (moves to A0 or A1 based on trigger source),
-    1 MSPS interleaved dual-DMA streaming, and dual-channel FFT analysis.
+    1 MSPS interleaved dual-DMA streaming, dual-channel FFT analysis, and graceful AD3 handling.
     """
 
     def __init__(
@@ -137,7 +137,7 @@ class OscilloscopeDashboard:
         )
         widgets.jslink((self.ch1_freq_slider, "value"), (self.ch1_freq_input, "value"))
 
-        # 4. Channel 2 Controls (W2 -> A1) - Perfectly symmetric with Channel 1
+        # 4. Channel 2 Controls (W2 -> A1)
         self.ch2_shape_dd = widgets.Dropdown(
             options=["Sine", "Triangle", "Square"], value="Square", description="CH2 (A1):", layout=widgets.Layout(width="180px")
         )
@@ -166,10 +166,6 @@ class OscilloscopeDashboard:
         initial_freq = np.linspace(0, 250000, 513)
 
         # Tab 1: Dual Scope (A0 Top, A1 Bottom)
-        # Trace 0: A0 (Row 1)
-        # Trace 1: Trigger Line on A0 (Row 1)
-        # Trace 2: A1 (Row 2)
-        # Trace 3: Trigger Line on A1 (Row 2)
         self.fig_dual_scope = make_subplots(
             rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
             subplot_titles=("<b>Channel 1: A0 (Time Domain)</b>", "<b>Channel 2: A1 (Time Domain)</b>")
@@ -260,7 +256,7 @@ class OscilloscopeDashboard:
             self.trigger.set_threshold(float(self.trig_level_slider.value))
 
     def _update_wavegen(self):
-        if self.ad3:
+        if self.ad3 and self.ad3.is_running:
             self.ad3.update_ch1(
                 shape=self.ch1_shape_dd.value,
                 frequency=float(self.ch1_freq_slider.value),
@@ -276,22 +272,17 @@ class OscilloscopeDashboard:
             )
 
     def _get_arm_control_word(self) -> int:
-        """
-        Computes the register control word.
-        Bit 5 is mapped such that 'CH1 (A0)' triggers A0 and 'CH2 (A1)' triggers A1.
-        """
         is_falling = (self.trig_edge_dd.value == "Falling")
         is_ch1 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
         mode = self.trig_mode_dd.value
         
-        # Base: Bit 0 = ARM, Bit 3 = SINGLE SHOT
         ctrl = (1 << 0) | (1 << 3)
         if is_falling:
-            ctrl |= (1 << 2)        # Bit 2: FALLING EDGE
+            ctrl |= (1 << 2)
         if mode == "Auto":
-            ctrl |= (1 << 1)        # Bit 1: AUTO TIMEOUT
+            ctrl |= (1 << 1)
         if is_ch1:
-            ctrl |= (1 << 5)        # Inverted hardware routing: 1 = CH1 (A0), 0 = CH2 (A1)
+            ctrl |= (1 << 5)
         return ctrl
 
     def _on_trig_param_change(self, _):
@@ -335,8 +326,8 @@ class OscilloscopeDashboard:
             trig.mmio.write(0x0C, 5000000)  # 50ms Auto-Timeout @ 100MHz clock
             self._update_trig_level()
 
-        # 4. Start AD3 Dual Wavegen (Both W1 and W2 always enabled)
-        self.ad3.start(
+        # 4. Start AD3 Dual Wavegen (Only if AD3 is physically detected)
+        ad3_launched = self.ad3.start(
             shape=self.ch1_shape_dd.value,
             frequency=float(self.ch1_freq_slider.value),
             amplitude=float(self.ch1_amp_slider.value),
@@ -347,11 +338,12 @@ class OscilloscopeDashboard:
             ch2_offset=1.65,
             enable_ch2=True
         )
-        wait_start = time.time()
-        while self._is_running and not self.ad3.is_ready:
-            time.sleep(0.05)
-            if time.time() - wait_start > 3.0:
-                break
+        if ad3_launched:
+            wait_start = time.time()
+            while self._is_running and not self.ad3.is_ready:
+                time.sleep(0.05)
+                if time.time() - wait_start > 2.0:
+                    break
 
         print(f"[Dashboard] Dual Acquisition active | Source: {self.trig_src_dd.value} | Mode: {self.trig_mode_dd.value}")
 

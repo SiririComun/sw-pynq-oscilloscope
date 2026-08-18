@@ -1,3 +1,8 @@
+"""
+pynq_oscilloscope.ad3_wavegen: Non-blocking multi-threaded wrapper for Digilent AD3 Wavegen.
+Features auto-detection to gracefully handle environments where AD3 is not physically connected.
+"""
+
 import time
 import threading
 from typing import Optional, Dict
@@ -44,6 +49,13 @@ class AD3SignalGenerator:
             "enabled": True
         }
 
+    def has_device(self) -> bool:
+        """Checks if a Digilent device is physically enumerated on the USB bus."""
+        try:
+            return self.dwf.enum.count() > 0
+        except Exception:
+            return False
+
     def _configure_channel(self, wavegen, ch_index: int, cfg: Dict):
         """Applies hardware settings to a specific wavegen channel."""
         func_enum = self.WAVEFORM_MAP.get(cfg["shape"], DwfAnalogOutFunction.Sine)
@@ -58,6 +70,11 @@ class AD3SignalGenerator:
     def _worker(self):
         """Background thread execution loop."""
         try:
+            if not self.has_device():
+                self.is_ready = False
+                self.is_running = False
+                return
+
             self._device_handle = openDwfDevice(self.dwf)
             wavegen = self._device_handle.analogOut
             
@@ -93,28 +110,34 @@ class AD3SignalGenerator:
             print("[AD3] Wavegen stopped and hardware handle released.")
             
         except Exception as e:
-            print(f"[AD3] Error in background wavegen thread: {e}")
+            if self.is_ready:
+                print(f"[AD3] Error in background wavegen thread: {e}")
             self.is_ready = False
             self.is_running = False
 
     def start(
         self,
-        # Channel 1 parameters (W1 -> Pin A0)
         shape: str = "Sine",
         frequency: float = 1000.0,
         amplitude: float = 1.0,
         offset: float = 1.65,
-        # Channel 2 parameters (W2 -> Pin A1)
         ch2_shape: str = "Square",
         ch2_frequency: float = 5000.0,
         ch2_amplitude: float = 1.0,
         ch2_offset: float = 1.65,
         enable_ch2: bool = True
-    ):
-        """Starts background dual-channel signal generation."""
+    ) -> bool:
+        """
+        Starts background dual-channel signal generation.
+        Returns True if hardware was detected and launched, False if bypassed.
+        """
         if self.is_running:
-            print("[AD3] Wavegen is already running.")
-            return
+            return True
+
+        if not self.has_device():
+            self.is_ready = False
+            self.is_running = False
+            return False
 
         self.is_ready = False
         self.ch1 = {
@@ -135,9 +158,9 @@ class AD3SignalGenerator:
         
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
+        return True
 
     def update_ch1(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
-        """Dynamically update Channel 1 (W1) parameters while active."""
         if shape is not None and shape in self.WAVEFORM_MAP:
             self.ch1["shape"] = shape
         if frequency is not None:
@@ -148,7 +171,6 @@ class AD3SignalGenerator:
             self.ch1["offset"] = float(offset)
 
     def update_ch2(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None, enabled: bool = None):
-        """Dynamically update Channel 2 (W2) parameters while active."""
         if shape is not None and shape in self.WAVEFORM_MAP:
             self.ch2["shape"] = shape
         if frequency is not None:
@@ -161,7 +183,6 @@ class AD3SignalGenerator:
             self.ch2["enabled"] = bool(enabled)
 
     def update_parameters(self, shape: str = None, frequency: float = None, amplitude: float = None, offset: float = None):
-        """Backwards-compatible update method for Channel 1."""
         self.update_ch1(shape=shape, frequency=frequency, amplitude=amplitude, offset=offset)
 
     def stop(self):
@@ -169,7 +190,7 @@ class AD3SignalGenerator:
         if self.is_running:
             self.is_running = False
             if self._thread and self._thread.is_alive():
-                self._thread.join(timeout=2.0)
+                self._thread.join(timeout=1.0)
 
     def __enter__(self):
         return self
