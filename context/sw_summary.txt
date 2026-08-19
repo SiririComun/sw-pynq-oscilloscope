@@ -7,11 +7,12 @@ Branch Tracking Status:
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation  96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/runtime-config-audio 209d684 [origin/feat/runtime-config-audio] feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback
+* feat/runtime-config-audio a7feb27 [origin/feat/runtime-config-audio] docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite
   main                      96e8763 [origin/main] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
 
 Git Commit Graph & History:
-* 209d684  (HEAD -> feat/runtime-config-audio, origin/feat/runtime-config-audio) - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
+* a7feb27  (HEAD -> feat/runtime-config-audio, origin/feat/runtime-config-audio) - 2026-08-19 : docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite (SiririComun)
+* 209d684  - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
 * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
 * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)
 * e5b6a9a  - 2026-08-18 : feat(overlay): implement unified multi-regime profile switcher and audio playback (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 * 3ff6a14  - 2026-08-18 : feat(ad3): add hardware auto-detection to gracefully handle missing AD3 (SiririComun)
 *   82e5005  (tag: v1.3.0) - 2026-08-16 : merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard (SiririComun)
 |\  
-| * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
-| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)```
+| * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)```
 
 Files structure: 
 
@@ -58,9 +58,7 @@ Files structure:
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
 │   ├── 04_fft_spectrum_analyzer.ipynb
-│   ├── 05_audio_dashboard.ipynb
-│   ├── 06_audio_fft_microphone_test.ipynb
-│   └── 07_runtime_multiregime_test.ipynb
+│   └── 05_audio_dashboard.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── audio_dashboard.py
@@ -77,7 +75,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 37 files
+8 directories, 35 files
 ```
 
 pypi.yml:
@@ -122,7 +120,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.4.5-rc1"
+    "version": "v1.4.5"
 }```
 
 setup.py:
@@ -138,7 +136,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.4.0",
+    version="1.4.5",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -194,7 +192,7 @@ from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.4.0"
+__version__ = "1.4.5"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -2660,470 +2658,6 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
-06_audio_fft_microphone_test.ipynb:
-
-```json
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook 6: Real-Time Audio Decimation, High-Resolution FFT & Microphone Validation\n",
-    "\n",
-    "This notebook verifies the **Phase 2.5 (`v1.4.5-rc1`)** hardware and software audio stack on the PYNQ-Z2.\n",
-    "\n",
-    "### 🌟 Key Improvements in v1.4.5:\n",
-    "- 🎙 **Hardware PL Decimator ($M=10\\times$):** Converts the raw 500 kSPS stream to an anti-aliased **50 kSPS audio stream**.\n",
-    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Time Window:** Captures multiple full wave periods of bass ($50\\,\\text{Hz} - 250\\,\\text{Hz}$) and vocal frequencies.\n",
-    "- 📊 **High-Resolution Audio FFT ($\\Delta f \\approx 24.41\\,\\text{Hz}$):** Resolves individual musical notes and speech formants across $0 - 25\\,\\text{kHz}$.\n",
-    "- 🎯 **Sub-Bin Quadratic Peak Interpolation:** Delivers sub-Hertz frequency tracking accuracy ($\\pm 0.2\\,\\text{Hz} - 0.5\\,\\text{Hz}$).\n",
-    "- 🎛 **Dedicated `AudioDashboard`:** Complete dark-mode instrument designed specifically for passive MAX4466 microphones with live clipping warning detectors."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 1. System Setup & Overlay Initialization\n",
-    "Initialize `OscilloscopeOverlay()`. It automatically loads the `v1.4.5-rc1` bitstream containing the PL audio decimator."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
-    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
-    "import numpy as np\n",
-    "import plotly.graph_objects as go\n",
-    "from plotly.subplots import make_subplots\n",
-    "\n",
-    "# Ensure bus permissions\n",
-    "check_usb_permissions()\n",
-    "\n",
-    "# Load Dual-Channel Decimated Audio Overlay\n",
-    "ol = OscilloscopeOverlay()\n",
-    "info = ol.set_profile(\"audio\")\n",
-    "\n",
-    "print(\"✅ Decimated Audio Overlay loaded successfully!\")\n",
-    "print(f\"  • Audio Sample Rate : {info['sample_rate_hz']/1e3:.1f} kSPS per channel\")\n",
-    "print(f\"  • Time Window       : {info['time_window_ms']:.2f} ms per 1024-sample frame\")\n",
-    "print(f\"  • FFT Bin Spacing   : Δf = {info['delta_f_hz']:.3f} Hz per bin (0 Hz to 25 kHz)\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 2. MAX4466 Microphone Resting Bias & Saturation Check\n",
-    "Verify that the resting DC level of both microphones sits near the mid-rail ($1.65\\,\\text{V}$) and check that the signal is not clipping ($0.10\\,\\text{V} < V < 3.10\\,\\text{V}$)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Set Trigger to Center Baseline (1.65V) in Auto Mode\n",
-    "ol.trigger.configure(mode=\"Auto\", edge=\"Rising\", source=\"CH1\", threshold_volts=1.65, timeout_ms=50.0)\n",
-    "\n",
-    "# Capture a single stereo frame (1024 samples per channel)\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "\n",
-    "mean_a0, vpp_a0 = float(np.mean(v_a0)), float(np.ptp(v_a0))\n",
-    "mean_a1, vpp_a1 = float(np.mean(v_a1)), float(np.ptp(v_a1))\n",
-    "\n",
-    "print(\"🎙 Microphone Status Check:\")\n",
-    "print(f\"  • Mic 1 (A0): DC Offset = {mean_a0:.2f} V | Vpp = {vpp_a0:.2f} V | Min = {v_a0.min():.2f} V, Max = {v_a0.max():.2f} V\")\n",
-    "print(f\"  • Mic 2 (A1): DC Offset = {mean_a1:.2f} V | Vpp = {vpp_a1:.2f} V | Min = {v_a1.min():.2f} V, Max = {v_a1.max():.2f} V\")\n",
-    "\n",
-    "# Saturation warnings\n",
-    "if v_a0.min() < 0.10 or v_a0.max() > 3.10:\n",
-    "    print(\"⚠️ WARNING: Mic 1 (A0) is CLIPPING! Rotate the back trimmer counter-clockwise to reduce gain.\")\n",
-    "else:\n",
-    "    print(\"✅ Mic 1 (A0) operating within linear dynamic range.\")\n",
-    "\n",
-    "if v_a1.min() < 0.10 or v_a1.max() > 3.10:\n",
-    "    print(\"⚠️ WARNING: Mic 2 (A1) is CLIPPING! Rotate the back trimmer counter-clockwise to reduce gain.\")\n",
-    "else:\n",
-    "    print(\"✅ Mic 2 (A1) operating within linear dynamic range.\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 3. Time-Domain Multi-Period Audio Waveform Capture\n",
-    "Speak, whistle, or play an acoustic test tone (e.g., $100\\,\\text{Hz}$ or $440\\,\\text{Hz}$) near the microphones. The plot below spans the full **$20.48\\,\\text{ms}$ time window**, clearly showing multiple complete wave cycles."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "import matplotlib.pyplot as plt\n",
-    "\n",
-    "# Capture real-time acoustic waveforms\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "time_ms = np.linspace(0, 20.48, len(v_a0))\n",
-    "\n",
-    "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 5.5), sharex=True, dpi=100)\n",
-    "\n",
-    "ax1.plot(time_ms, v_a0, color=\"#00A389\", linewidth=1.6, label=\"Mic 1: A0 (Vaux1)\")\n",
-    "ax1.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"DC Baseline (1.65V)\")\n",
-    "ax1.set_title(\"Dual Microphone Acoustic Time-Domain Capture (20.48 ms Window @ 50 kSPS)\", fontsize=11, fontweight=\"bold\")\n",
-    "ax1.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
-    "ax1.set_ylim(0, 3.3)\n",
-    "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax1.legend(loc=\"upper right\")\n",
-    "\n",
-    "ax2.plot(time_ms, v_a1, color=\"#D81B60\", linewidth=1.6, label=\"Mic 2: A1 (Vaux9)\")\n",
-    "ax2.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"DC Baseline (1.65V)\")\n",
-    "ax2.set_xlabel(\"Time (Milliseconds)\", fontsize=10)\n",
-    "ax2.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
-    "ax2.set_ylim(0, 3.3)\n",
-    "ax2.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax2.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. High-Resolution Audio Spectrum & Sub-Bin Peak Tracking\n",
-    "Calculate the Hann-windowed frequency spectrum and extract the dominant fundamental frequency ($f_0$) using **Quadratic (Parabolic) Peak Interpolation**."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Capture audio frames\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "n = len(v_a0)\n",
-    "\n",
-    "# 1. DC Baseline Removal & Hann Windowing\n",
-    "sig_a0 = (v_a0 - np.mean(v_a0)) * np.hanning(n)\n",
-    "sig_a1 = (v_a1 - np.mean(v_a1)) * np.hanning(n)\n",
-    "\n",
-    "# 2. Fast Fourier Transform (0 to 25 kHz)\n",
-    "freqs = np.fft.rfftfreq(n, d=1.0 / 50000.0)\n",
-    "mag_a0 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a0)) / (n / 2.0), 1e-6))\n",
-    "mag_a1 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a1)) / (n / 2.0), 1e-6))\n",
-    "\n",
-    "# 3. Sub-Bin Quadratic Peak Detection\n",
-    "peak_f0, peak_m0 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=20.0)\n",
-    "peak_f1, peak_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=20.0)\n",
-    "\n",
-    "print(f\"🎯 Dominant Pitch on Mic 1 (A0): {peak_f0:.2f} Hz ({peak_m0:.1f} dBV)\")\n",
-    "print(f\"🎯 Dominant Pitch on Mic 2 (A1): {peak_f1:.2f} Hz ({peak_m1:.1f} dBV)\")\n",
-    "\n",
-    "# Plot Spectrum (Zoomed to 0 - 3000 Hz for voice and bass)\n",
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs, mag_a0, color=\"#00A389\", linewidth=1.6, label=f\"Mic 1 Spectrum (Peak: {peak_f0:.1f} Hz)\")\n",
-    "plt.plot(freqs, mag_a1, color=\"#D81B60\", linewidth=1.4, alpha=0.8, label=f\"Mic 2 Spectrum (Peak: {peak_f1:.1f} Hz)\")\n",
-    "plt.scatter([peak_f0], [peak_m0], color=\"#FFA500\", s=50, zorder=5, label=\"Fundamental Marker\")\n",
-    "\n",
-    "plt.title(\"High-Resolution Audio Frequency Spectrum (Δf = 24.41 Hz)\", fontsize=11, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (Hz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 3000)  # Audio Zoom\n",
-    "plt.ylim(-90, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 5. Launch the Interactive Dedicated `AudioDashboard`\n",
-    "Launch the dedicated **`AudioDashboard`** for live multi-tab audio monitoring, real-time VU meter alerts, and acoustic spectrum analysis."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Launch Dedicated Audio & Microphone Dashboard\n",
-    "app = ol.audio_dashboard()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 6. Hardware Shutdown & Cleanup\n",
-    "Stop the acquisition and release the contiguous DMA memory buffers."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "app.stop()\n",
-    "ol.close()\n",
-    "print(\"🔒 Audio acquisition stopped and hardware memory released.\")"
-   ]
-  }
- ],
- "metadata": {
-  "language_info": {
-   "name": "python"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
-```
-
-07_runtime_multiregime_test.ipynb:
-
-```json
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook 7: Dynamic Multi-Regime Audio & Oscilloscope Instrument\n",
-    "\n",
-    "This notebook demonstrates the **Phase 2.5 (`v1.4.5-rc1`)** multi-regime hardware architecture on the PYNQ-Z2.\n",
-    "\n",
-    "### 🌟 Multi-Regime Capabilities:\n",
-    "- 🔄 **Runtime Configurable Decimation ($M=1, 10, 20, 50$):** Switch between High-Speed Lab Oscilloscope ($0 - 250\\,\\text{kHz}$) and Deep Bass Zoom ($0 - 5\\,\\text{kHz}$) on the fly.\n",
-    "- 🪟 **Multi-Windowing Engine:** Dynamic selection of `Hann`, `Blackman`, `Flat-Top`, and `Rectangular` windows for $>58\\,\\text{dB}$ sidelobe suppression.\n",
-    "- 🔊 **Jupyter Audio Playback:** Listen to real-time recorded microphone audio directly in the notebook.\n",
-    "- 🎛 **Interactive Multi-Regime Dashboard:** Complete dual-channel live instrument with automatic timebase adaptation."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 1. System Setup & Overlay Initialization"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
-    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
-    "import numpy as np\n",
-    "import matplotlib.pyplot as plt\n",
-    "\n",
-    "# Ensure USB permissions\n",
-    "check_usb_permissions()\n",
-    "\n",
-    "# Load Multi-Regime Overlay (v1.4.5-rc1)\n",
-    "ol = OscilloscopeOverlay()\n",
-    "\n",
-    "print(\"✅ Multi-Regime Overlay loaded successfully!\")\n",
-    "print(\"Active Configuration:\", ol.get_profile_info())"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 2. Dynamic On-the-Fly Profile Switching\n",
-    "Switch between all 4 operating profiles in software without resetting the FPGA or restarting the kernel."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "profiles = [\"oscilloscope\", \"audio\", \"speech\", \"bass_zoom\"]\n",
-    "\n",
-    "print(\"🔄 Testing Dynamic Profile Switching:\")\n",
-    "for p in profiles:\n",
-    "    info = ol.set_profile(p)\n",
-    "    print(f\"  • Mode: {info['mode']:<14} | M={info['decimation_M']:<2} | fs={info['sample_rate_hz']/1e3:5.1f} kSPS | Window={info['time_window_ms']:6.2f} ms | Δf={info['delta_f_hz']:5.2f} Hz | Max Freq={info['max_frequency_hz']/1e3:5.1f} kHz\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 3. Windowing Function Comparison (Spectral Leakage Suppression)\n",
-    "Capture a microphone frame and compare the spectral response under **Hann**, **Blackman** ($>58\\,\\text{dB}$ rejection), **Flat-Top** (calibrated amplitude), and **Rectangular** windows."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Set profile to standard audio\n",
-    "ol.set_profile(\"audio\")\n",
-    "ol.trigger.configure(mode=\"Auto\", threshold_volts=1.65)\n",
-    "\n",
-    "# Capture microphone audio\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "\n",
-    "windows = [\"rectangular\", \"hann\", \"blackman\", \"flattop\"]\n",
-    "colors = [\"#888888\", \"#00FFCC\", \"#FF007F\", \"#FFA500\"]\n",
-    "\n",
-    "plt.figure(figsize=(11, 5), dpi=100)\n",
-    "for win, col in zip(windows, colors):\n",
-    "    freqs, mags = ol.fft.compute_spectrum(v_a0, unit=\"dBV\", window_type=win)\n",
-    "    plt.plot(freqs, mags, label=f\"{win.capitalize()} Window\", color=col, linewidth=1.4, alpha=0.85)\n",
-    "\n",
-    "plt.title(\"Window Function Sidelobe Suppression Comparison on Microphone Audio\", fontsize=11, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (Hz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 5000)\n",
-    "plt.ylim(-100, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. Deep Bass Zoom Mode Test ($10\\,\\text{kSPS}, \\Delta f = 4.88\\,\\text{Hz}, T_{\\text{window}} = 204.8\\,\\text{ms}$)\n",
-    "Switch to `bass_zoom` mode. The time window expands to **$204.8\\,\\text{ms}$**, capturing multiple full cycles of low-frequency bass notes with high frequency resolution."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Activate Deep Bass Zoom Mode (M=50)\n",
-    "info = ol.set_profile(\"bass_zoom\")\n",
-    "print(f\"🎸 Deep Bass Zoom Active: Window = {info['time_window_ms']:.1f} ms | Δf = {info['delta_f_hz']:.2f} Hz per bin\")\n",
-    "\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "time_ms = np.linspace(0, info[\"time_window_ms\"], len(v_a0))\n",
-    "\n",
-    "# Compute Hann-windowed bass spectrum\n",
-    "freqs_bass, mags_bass = ol.fft.compute_spectrum(v_a0, unit=\"dBV\", window_type=\"hann\")\n",
-    "peak_f, peak_m = StreamingFFT.get_peak_frequency(freqs_bass, mags_bass, min_freq_hz=10.0)\n",
-    "\n",
-    "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6), dpi=100)\n",
-    "\n",
-    "# Time plot (204.8 ms)\n",
-    "ax1.plot(time_ms, v_a0, color=\"#00A389\", linewidth=1.4, label=\"Mic 1: A0 (Deep Bass Window)\")\n",
-    "ax1.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"1.65V Bias\")\n",
-    "ax1.set_title(f\"Deep Bass Capture: 204.8 ms Observation Window @ 10 kSPS\", fontsize=11, fontweight=\"bold\")\n",
-    "ax1.set_xlabel(\"Time (Milliseconds)\", fontsize=10)\n",
-    "ax1.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
-    "ax1.set_ylim(0, 3.3)\n",
-    "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax1.legend(loc=\"upper right\")\n",
-    "\n",
-    "# Spectrum (0 to 1000 Hz zoom)\n",
-    "ax2.plot(freqs_bass, mags_bass, color=\"#FF007F\", linewidth=1.5, label=f\"Sub-Bass Spectrum (Peak: {peak_f:.1f} Hz)\")\n",
-    "ax2.scatter([peak_f], [peak_m], color=\"#00FFCC\", s=50, zorder=5, label=\"Detected Fundamental\")\n",
-    "ax2.set_title(\"High-Resolution Sub-Bass Spectrum (Δf = 4.88 Hz)\", fontsize=11, fontweight=\"bold\")\n",
-    "ax2.set_xlabel(\"Frequency (Hz)\", fontsize=10)\n",
-    "ax2.set_ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "ax2.set_xlim(0, 1000)\n",
-    "ax2.set_ylim(-90, 0)\n",
-    "ax2.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax2.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 5. In-Notebook Audio Recording & Playback\n",
-    "Record audio through the FPGA DMA from Microphone 1 and listen to it directly in the browser."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Set to Full Audio mode for audio playback\n",
-    "ol.set_profile(\"audio\")\n",
-    "\n",
-    "print(\"🔊 Playing captured Microphone 1 audio:\")\n",
-    "ol.play_audio(channel=1)"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 6. Launch the Interactive Multi-Regime Dashboard\n",
-    "Launch the complete **`AudioDashboard`** with the live **Regime Selector** and **Window Dropdown**."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Launch Multi-Regime Audio Dashboard\n",
-    "app = ol.audio_dashboard()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 7. Clean Hardware Shutdown"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "app.stop()\n",
-    "ol.close()\n",
-    "print(\"🔒 Multi-regime instrument stopped and memory released.\")"
-   ]
-  }
- ],
- "metadata": {
-  "language_info": {
-   "name": "python"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
-```
-
 generate_sw_summary.sh:
 
 ```bash
@@ -3199,8 +2733,6 @@ TARGET_FILES=(
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
     "notebooks/05_audio_dashboard.ipynb:json"
-    "notebooks/06_audio_fft_microphone_test.ipynb:json"
-    "notebooks/07_runtime_multiregime_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 

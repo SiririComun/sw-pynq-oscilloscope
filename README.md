@@ -183,8 +183,6 @@ app = ol.dashboard()
 | **`03_oscilloscope_dashboard.ipynb`** | **Laboratory Instrument:** Deploys interactive Dual-Channel AD3 Oscilloscope Dashboard. | `OscilloscopeOverlay`, `OscilloscopeDashboard` |
 | **`04_fft_spectrum_analyzer.ipynb`** | **Spectrum Analyzer Guide:** Captures PL hardware FFT spectra, analyzes harmonics. | `OscilloscopeOverlay`, `StreamingFFT` |
 | **`05_audio_dashboard.ipynb`** | **Audio Instrument:** Deploys dedicated Audio & Microphone Dashboard (`ol.audio_dashboard()`). | `OscilloscopeOverlay`, `AudioDashboard` |
-| **`06_audio_fft_microphone_test.ipynb`**| **Microphone Testing:** Validates MAX4466 resting bias, clipping alerts, and bass pitch tracking. | `AudioDashboard`, `StreamingFFT` |
-| **`07_runtime_multiregime_test.ipynb`** | **Multi-Regime Guide:** Dynamically switches between Scope, Audio, and Deep Bass profiles. | `set_profile()`, `play_audio()` |
 
 ---
 
