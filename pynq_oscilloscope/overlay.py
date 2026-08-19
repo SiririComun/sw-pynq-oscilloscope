@@ -1,6 +1,6 @@
 """
-pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Oscilloscope & Audio Spectrum Analyzer.
-Features runtime multi-regime profile switching (Lab Scope, Audio, Bass Zoom) and Jupyter audio playback.
+pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
+Features runtime profile switching (Lab Scope, Audio, Speech, Bass Zoom), non-blocking DMA polling, and Jupyter audio playback.
 """
 
 from pathlib import Path
@@ -20,7 +20,7 @@ from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel Multi-Regime Oscilloscope & Audio Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
     """
 
     PROFILES = {
@@ -106,7 +106,7 @@ class OscilloscopeOverlay(Overlay):
             "mode": mode_clean,
             "decimation_M": m_val,
             "sample_rate_hz": self.fs_per_ch,
-            "time_window_ms": ( (pkt_val // 2) / self.fs_per_ch ) * 1000.0,
+            "time_window_ms": ((pkt_val // 2) / self.fs_per_ch) * 1000.0,
             "fft_points_N": n_val,
             "delta_f_hz": self.fft.delta_f,
             "max_frequency_hz": self.fs_per_ch / 2.0
@@ -127,7 +127,7 @@ class OscilloscopeOverlay(Overlay):
         }
 
     # =========================================================================
-    # 2. Synchronized Audio & Stereo Capture
+    # 2. Synchronized Audio & Stereo Capture (Hardened Non-Blocking Polling)
     # =========================================================================
 
     def capture_stereo(
