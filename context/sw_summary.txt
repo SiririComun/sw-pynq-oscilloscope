@@ -5,13 +5,14 @@ Current Branch: feat/pl-audio-decimation
 Branch Tracking Status:
   feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-audio-decimation  c53c576 [origin/feat/pl-audio-decimation] fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range
+* feat/pl-audio-decimation  99916b1 [origin/feat/pl-audio-decimation] test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
   main                      82e5005 [origin/main] merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard
 
 Git Commit Graph & History:
-* c53c576  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
+* 99916b1  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument (SiririComun)
+* c53c576  - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
 * 21bb110  - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
 * 1ce59ff  - 2026-08-19 : fix(overlay): implement non-blocking safe capture_stereo with XADC sequencer auto-init (SiririComun)
 * 660ad7d  - 2026-08-19 : fix(ad3): correct device enumeration to enable AD3 wavegen on v1.4.0 (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 |\  
 | * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
 | * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)
-| * 5c619cc  - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)
-| * 05efd58  - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)```
+| * 5c619cc  - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)```
 
 Files structure: 
 
@@ -2340,8 +2340,15 @@ class OscilloscopeOverlay(Overlay):
    "outputs": [],
    "source": [
     "# 1. Initialize Dual-Channel Decimated Audio Overlay (v1.4.0)\n",
-    "ol = OscilloscopeOverlay()\n",
-    "\n",
+    "ol = OscilloscopeOverlay()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
     "# 2. Render and launch dedicated Audio Dashboard\n",
     "app = ol.audio_dashboard()"
    ]
