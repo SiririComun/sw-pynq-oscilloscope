@@ -13,7 +13,7 @@ from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.4.0"
+__version__ = "1.4.5"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",

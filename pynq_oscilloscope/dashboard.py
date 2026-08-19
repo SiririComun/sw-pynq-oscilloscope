@@ -126,7 +126,7 @@ class OscilloscopeDashboard:
         self.fs_per_ch = 50_000.0               # 50 kSPS audio rate
         self.fft_points = fft_points
         self.display_window = display_window
-        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 40.96 ms
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 20.48 ms per ch (40.96 ms total)
         
         self._is_running = False
         self._single_done = False
@@ -314,7 +314,6 @@ class OscilloscopeDashboard:
 
     @staticmethod
     def _find_trigger_edge(signal: np.ndarray, threshold: float, is_falling: bool) -> int:
-        """Finds the zero-crossing / threshold index to lock waveform phase on screen."""
         if len(signal) < 10:
             return 0
         search_limit = min(len(signal) - 1, 200)
@@ -441,12 +440,12 @@ class OscilloscopeDashboard:
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
                             self.fig_dual_fft.data[1].x = [p_f1]
-                            self.fig_dual_fft.data[1].y = [p_m1]
+                            self.fig_dual_fft.data[1].y = [mag_a0[p_idx1]]
                             self.fig_dual_fft.data[1].text = [f" {p_f1:.1f} Hz"]
                             self.fig_dual_fft.data[2].x = freqs
                             self.fig_dual_fft.data[2].y = mag_a1
                             self.fig_dual_fft.data[3].x = [p_f2]
-                            self.fig_dual_fft.data[3].y = [p_m2]
+                            self.fig_dual_fft.data[3].y = [mag_a1[p_idx2]]
                             self.fig_dual_fft.data[3].text = [f" {p_f2:.1f} Hz"]
                             self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
 
@@ -464,7 +463,7 @@ class OscilloscopeDashboard:
                     elif active_tab == 3:  # Tab 4: CH2 View
                         with self.fig_ch2_view.batch_update():
                             self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = plot_v2
+                            self.fig_ch2_view.data[0].y = p_v2
                             self.fig_ch2_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch2_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch2_view.data[2].x = freqs
@@ -472,7 +471,6 @@ class OscilloscopeDashboard:
                             self.fig_ch2_view.layout.xaxis.range = [0, show_duration_ms]
                             self.fig_ch2_view.layout.xaxis2.range = [0, max_span]
 
-                    # Status Bar Readouts
                     mode_tag = " (LOCKED)" if mode == "Single" else ""
                     self.readout_ch1.value = f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>A0: Vpp={vpp1:.2f}V | f0={p_f1:.1f}Hz{mode_tag}</span>"
                     self.readout_ch2.value = f"<span style='color:#FF007F; font-family:monospace; font-size:13px; font-weight:bold;'>A1: Vpp={vpp2:.2f}V | f0={p_f2:.1f}Hz</span>"

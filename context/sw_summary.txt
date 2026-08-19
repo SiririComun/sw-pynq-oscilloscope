@@ -1,17 +1,18 @@
 Git Context & Branch Info:
 
 ```log
-Current Branch: feat/pl-audio-decimation
+Current Branch: main
 Branch Tracking Status:
   feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-audio-decimation  54455e5 [origin/feat/pl-audio-decimation] fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard
+  feat/pl-audio-decimation  96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-  feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
-  main                      82e5005 [origin/main] merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard
+  feat/runtime-config-audio 09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
+* main                      96e8763 [origin/main] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
 
 Git Commit Graph & History:
-* 54455e5  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard (SiririComun)
+* 96e8763  (HEAD -> main, tag: v1.4.0, origin/main, origin/feat/pl-audio-decimation, origin/HEAD, feat/pl-audio-decimation) - 2026-08-19 : chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook (SiririComun)
+* 54455e5  - 2026-08-19 : fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard (SiririComun)
 * 99916b1  - 2026-08-19 : test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument (SiririComun)
 * c53c576  - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
 * 21bb110  - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
@@ -23,10 +24,9 @@ Git Commit Graph & History:
 * 2be1288  - 2026-08-18 : feat(dashboard): add dedicated AudioDashboard with clipping detection and 40.96ms timebase (SiririComun)
 * 997dfdb  - 2026-08-18 : feat(fft): implement sub-bin quadratic peak interpolation in StreamingFFT (SiririComun)
 * 3ff6a14  - 2026-08-18 : feat(ad3): add hardware auto-detection to gracefully handle missing AD3 (SiririComun)
-*   82e5005  (tag: v1.3.0, origin/main, origin/HEAD, main) - 2026-08-16 : merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard (SiririComun)
+*   82e5005  (tag: v1.3.0) - 2026-08-16 : merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard (SiririComun)
 |\  
-| * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
-| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)```
+| * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)```
 
 Files structure: 
 
@@ -120,7 +120,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.4.0"
+    "version": "v1.4.5"
 }```
 
 setup.py:
@@ -136,7 +136,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.4.0",
+    version="1.4.5",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -192,7 +192,7 @@ from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.4.0"
+__version__ = "1.4.5"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -338,7 +338,7 @@ class OscilloscopeDashboard:
         self.fs_per_ch = 50_000.0               # 50 kSPS audio rate
         self.fft_points = fft_points
         self.display_window = display_window
-        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 40.96 ms
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 20.48 ms per ch (40.96 ms total)
         
         self._is_running = False
         self._single_done = False
@@ -526,7 +526,6 @@ class OscilloscopeDashboard:
 
     @staticmethod
     def _find_trigger_edge(signal: np.ndarray, threshold: float, is_falling: bool) -> int:
-        """Finds the zero-crossing / threshold index to lock waveform phase on screen."""
         if len(signal) < 10:
             return 0
         search_limit = min(len(signal) - 1, 200)
@@ -653,12 +652,12 @@ class OscilloscopeDashboard:
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
                             self.fig_dual_fft.data[1].x = [p_f1]
-                            self.fig_dual_fft.data[1].y = [p_m1]
+                            self.fig_dual_fft.data[1].y = [mag_a0[p_idx1]]
                             self.fig_dual_fft.data[1].text = [f" {p_f1:.1f} Hz"]
                             self.fig_dual_fft.data[2].x = freqs
                             self.fig_dual_fft.data[2].y = mag_a1
                             self.fig_dual_fft.data[3].x = [p_f2]
-                            self.fig_dual_fft.data[3].y = [p_m2]
+                            self.fig_dual_fft.data[3].y = [mag_a1[p_idx2]]
                             self.fig_dual_fft.data[3].text = [f" {p_f2:.1f} Hz"]
                             self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
 
@@ -676,7 +675,7 @@ class OscilloscopeDashboard:
                     elif active_tab == 3:  # Tab 4: CH2 View
                         with self.fig_ch2_view.batch_update():
                             self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = plot_v2
+                            self.fig_ch2_view.data[0].y = p_v2
                             self.fig_ch2_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch2_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch2_view.data[2].x = freqs
@@ -684,7 +683,6 @@ class OscilloscopeDashboard:
                             self.fig_ch2_view.layout.xaxis.range = [0, show_duration_ms]
                             self.fig_ch2_view.layout.xaxis2.range = [0, max_span]
 
-                    # Status Bar Readouts
                     mode_tag = " (LOCKED)" if mode == "Single" else ""
                     self.readout_ch1.value = f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>A0: Vpp={vpp1:.2f}V | f0={p_f1:.1f}Hz{mode_tag}</span>"
                     self.readout_ch2.value = f"<span style='color:#FF007F; font-family:monospace; font-size:13px; font-weight:bold;'>A1: Vpp={vpp2:.2f}V | f0={p_f2:.1f}Hz</span>"
@@ -1054,37 +1052,38 @@ fft_dma.py:
 
 ```python
 """
-pynq_oscilloscope.fft_dma: High-level driver for the PL-accelerated 2048-point FFT & CORDIC Magnitude Engine.
-Features sub-bin quadratic interpolation for sub-Hertz audio frequency precision.
+pynq_oscilloscope.fft_dma: Advanced FFT & Spectral Analysis Engine for PYNQ-Z2.
+Features multi-windowing (Hann, Hamming, Blackman, Flat-Top), sub-bin quadratic
+interpolation, and hardware CORDIC DMA magnitude stream processing.
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 import numpy as np
 from pynq import allocate
 
 
 class StreamingFFT:
     """
-    High-level driver for the PL-accelerated 2048-point FFT & CORDIC Magnitude Engine.
-    
-    Streams pre-calculated magnitude bins from the FPGA via AXI DMA (axi_dma_1),
-    formats the single-sided audio spectrum (0 Hz to 25 kHz @ 50 kSPS), and provides logarithmic
-    (dBV / dBFS) and linear power spectrum transformations.
+    High-level driver for FFT analysis, windowing, and CORDIC magnitude streaming.
+    Supports dynamic sampling rates, window functions, and sub-Hertz peak tracking.
     """
+
+    WINDOWS = ["hann", "hamming", "blackman", "flattop", "rectangular"]
 
     def __init__(self, overlay, fft_points: int = 2048, sample_rate_hz: float = 50_000.0):
         """
-        Initialize the FFT DMA controller from the loaded PYNQ overlay.
+        Initialize the FFT controller.
         
         :param overlay: Loaded pynq.Overlay or OscilloscopeOverlay instance.
-        :param fft_points: FFT transform length matching the PL xfft core (default: 2048).
-        :param sample_rate_hz: Decimated audio sampling frequency (default: 50.0 kSPS).
+        :param fft_points: Transform length N (default: 2048).
+        :param sample_rate_hz: Sampling frequency fs (default: 50.0 kSPS).
         """
-        self.fft_points = fft_points
+        self.fft_points = int(fft_points)
         self.sample_rate_hz = float(sample_rate_hz)
-        self.num_bins = fft_points // 2  # Single-sided spectrum bins (1024)
+        self.num_bins = self.fft_points // 2  # Single-sided spectrum bins (1024)
+        self.active_window = "hann"
         
-        # Frequency axis grid (0 to 25 kHz for 50 kSPS @ 2048 pts, delta_f = 24.414 Hz)
+        # Grid parameters
         self.delta_f = self.sample_rate_hz / self.fft_points
         self.freq_axis = np.arange(self.num_bins) * self.delta_f
 
@@ -1107,35 +1106,117 @@ class StreamingFFT:
                 else:
                     raise RuntimeError("No AXI DMA block found for FFT stream (axi_dma_1).")
 
-        # Allocate contiguous CMA buffer ONCE for real-time streaming
+        # Allocate contiguous CMA buffer
         self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
+        self._window_cache: Dict[str, np.ndarray] = {}
+
+    # =========================================================================
+    # 1. Windowing Engine
+    # =========================================================================
+
+    def set_window(self, window_type: str = "hann"):
+        """
+        Sets the active window function.
+        
+        :param window_type: 'hann', 'hamming', 'blackman', 'flattop', or 'rectangular'.
+        """
+        win_clean = window_type.lower().strip()
+        if win_clean not in self.WINDOWS:
+            raise ValueError(f"Invalid window '{window_type}'. Choose from: {self.WINDOWS}")
+        self.active_window = win_clean
+
+    def get_window_vector(self, length: int, window_type: Optional[str] = None) -> np.ndarray:
+        """Generates or retrieves a cached window vector of given length."""
+        win_name = (window_type or self.active_window).lower().strip()
+        cache_key = f"{win_name}_{length}"
+        
+        if cache_key in self._window_cache:
+            return self._window_cache[cache_key]
+
+        n = np.arange(length)
+        if win_name == "hann":
+            w = 0.5 - 0.5 * np.cos(2.0 * np.pi * n / (length - 1))
+        elif win_name == "hamming":
+            w = 0.54 - 0.46 * np.cos(2.0 * np.pi * n / (length - 1))
+        elif win_name == "blackman":
+            w = (0.42 - 0.5 * np.cos(2.0 * np.pi * n / (length - 1)) +
+                 0.08 * np.cos(4.0 * np.pi * n / (length - 1)))
+        elif win_name == "flattop":
+            w = (0.21557895 - 0.41663158 * np.cos(2.0 * np.pi * n / (length - 1)) +
+                 0.277263158 * np.cos(4.0 * np.pi * n / (length - 1)) -
+                 0.083578947 * np.cos(6.0 * np.pi * n / (length - 1)) +
+                 0.006947368 * np.cos(8.0 * np.pi * n / (length - 1)))
+        else:  # rectangular
+            w = np.ones(length, dtype=np.float64)
+
+        self._window_cache[cache_key] = w
+        return w
+
+    # =========================================================================
+    # 2. Software Spectral Computation from Time Samples
+    # =========================================================================
+
+    def compute_spectrum(
+        self,
+        time_samples: np.ndarray,
+        unit: str = "dBV",
+        window_type: Optional[str] = None,
+        remove_dc: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Computes a windowed, zero-centered, power-normalized RFFT spectrum.
+        
+        :param time_samples: 1D numpy array of physical voltages.
+        :param unit: 'dBV', 'dBFS', or 'Linear' (mV).
+        :param window_type: Window name (defaults to active_window).
+        :param remove_dc: Subtract mean baseline before FFT (default: True).
+        :return: (freq_axis_hz, magnitude_array).
+        """
+        x = np.array(time_samples, dtype=np.float64)
+        if remove_dc:
+            x = x - np.mean(x)
+            
+        n = len(x)
+        w = self.get_window_vector(n, window_type=window_type)
+        windowed_x = x * w
+
+        # Compute single-sided RFFT with coherent gain compensation
+        coherent_gain = np.sum(w) / n
+        fft_complex = np.fft.rfft(windowed_x)
+        freqs = np.fft.rfftfreq(n, d=1.0 / self.sample_rate_hz)
+        
+        # Peak linear amplitude normalization
+        linear_volts = (np.abs(fft_complex) / (n / 2.0)) / max(coherent_gain, 1e-4)
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(linear_volts / 1.65, 1e-6))
+        elif unit_clean == "LINEAR":
+            mags = linear_volts * 1000.0  # Millivolts
+        else:
+            raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
+
+        return freqs, mags
+
+    # =========================================================================
+    # 3. Hardware Spectrum DMA Streaming
+    # =========================================================================
 
     def capture_raw(self) -> np.ndarray:
-        """
-        Triggers a high-speed S2MM DMA transfer of 2048 magnitude points from PL.
-        Blocks until the frame completes (asserted by CORDIC/FFT TLAST).
-        """
+        """Triggers hardware S2MM DMA transfer of 2048 magnitude points from PL."""
         self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
         return np.array(self._buffer, copy=True)
 
     def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Captures a hardware FFT frame and returns (frequencies, magnitudes).
-        
-        :param unit: Output unit: 'dBV', 'dBFS', or 'Linear' (Volts Peak).
-        :param ref_voltage: Full-scale reference voltage of ADC (default: 3.3V).
-        :return: Tuple of (freq_axis_hz, magnitude_array) of length 1024.
-        """
+        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
         raw_full = self.capture_raw()
-        
-        # 1. Single-sided spectrum (0 to Nyquist)
         raw_half = raw_full[:self.num_bins].astype(np.float64)
 
-        # 2. Scale raw 16-bit CORDIC magnitude to equivalent Volts
         linear_volts = (raw_half / 2048.0) * (ref_voltage / 4095.0)
 
-        # 3. Convert to requested unit
         unit_clean = unit.strip().upper()
         if unit_clean == "DBV":
             safe_linear = np.maximum(linear_volts, 1e-6)
@@ -1150,6 +1231,10 @@ class StreamingFFT:
 
         return self.freq_axis, magnitudes
 
+    # =========================================================================
+    # 4. Sub-Bin Quadratic Peak Interpolation
+    # =========================================================================
+
     @staticmethod
     def get_peak_frequency(
         freqs: np.ndarray,
@@ -1158,14 +1243,8 @@ class StreamingFFT:
         interpolate: bool = True
     ) -> Tuple[float, float]:
         """
-        Finds the fundamental/dominant frequency and peak magnitude using
-        sub-bin quadratic (parabolic) interpolation for sub-Hertz accuracy.
-        
-        :param freqs: Frequency axis array (Hz).
-        :param mags: Magnitude spectrum array (dBV or Linear).
-        :param min_freq_hz: Minimum frequency threshold to ignore DC offset (default: 20 Hz).
-        :param interpolate: Enable quadratic sub-bin interpolation (default: True).
-        :return: (exact_peak_frequency_hz, peak_magnitude)
+        Finds the dominant pitch / fundamental frequency with sub-Hertz accuracy
+        using three-point parabolic interpolation.
         """
         valid_indices = np.where(freqs >= min_freq_hz)[0]
         if len(valid_indices) == 0:
@@ -1173,11 +1252,9 @@ class StreamingFFT:
         else:
             k = int(valid_indices[np.argmax(mags[valid_indices])])
 
-        # Boundary check for interpolation
         if not interpolate or k <= 0 or k >= len(mags) - 1:
             return float(freqs[k]), float(mags[k])
 
-        # Three-point parabolic interpolation: [alpha, beta, gamma]
         alpha = float(mags[k - 1])
         beta  = float(mags[k])
         gamma = float(mags[k + 1])
@@ -1187,7 +1264,7 @@ class StreamingFFT:
             return float(freqs[k]), float(beta)
 
         delta = 0.5 * (alpha - gamma) / denom
-        delta = max(-0.5, min(0.5, delta))  # Clamp within single bin width
+        delta = max(-0.5, min(0.5, delta))
 
         delta_f = float(freqs[1] - freqs[0]) if len(freqs) > 1 else 24.414
         interp_freq = float(freqs[k] + delta * delta_f)
@@ -1196,7 +1273,7 @@ class StreamingFFT:
         return interp_freq, interp_mag
 
     def close(self):
-        """Free the allocated contiguous memory (CMA) buffer."""
+        """Free allocated CMA buffer."""
         if hasattr(self, "_buffer") and self._buffer is not None:
             try:
                 self._buffer.close()
@@ -1422,9 +1499,10 @@ hw_trigger.py:
 ```python
 """
 pynq_oscilloscope.hw_trigger: High-level driver for the FPGA-based 'axis_trigger_unit' IP.
+Acts as the central Timing & Configuration Controller for Triggering, Decimation, and FFT length.
 """
 
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 from pynq import MMIO
 
 
@@ -1434,15 +1512,19 @@ class HardwareTrigger:
     
     Interfaces via AXI4-Lite registers to configure hardware-level edge detection,
     trigger channel source selection (CH1/A0 vs CH2/A1), voltage thresholds,
-    hysteresis, auto-timeouts, and oscilloscope modes.
+    decimation factors (M=1, 10, 20, 50), FFT transform length (N=512, 1024, 2048),
+    and packetizer boundaries.
     """
 
     # Register Byte Offsets matching axis_trigger_unit.vhd
-    REG_CONTROL    = 0x00
-    REG_STATUS     = 0x04
-    REG_THRESHOLD  = 0x08
-    REG_TIMEOUT    = 0x0C
-    REG_HYSTERESIS = 0x10
+    REG_CONTROL     = 0x00
+    REG_STATUS      = 0x04
+    REG_THRESHOLD   = 0x08
+    REG_TIMEOUT     = 0x0C
+    REG_HYSTERESIS  = 0x10
+    REG_DECIMATION  = 0x14  # [1:0] 00=M=1, 01=M=10, 10=M=20, 11=M=50
+    REG_FFT_CONFIG  = 0x18  # [15:0] (NFFT << 8) | FWD_INV
+    REG_PACKET_SIZE = 0x1C  # [15:0] Samples per DMA frame
 
     # Bit masks for REG_CONTROL
     BIT_ARM          = 1 << 0  # Bit 0: Arm trigger unit
@@ -1457,11 +1539,18 @@ class HardwareTrigger:
     STATUS_TRIGGERED = 1 << 1
     STATUS_STREAMING = 1 << 2
 
+    DECIMATION_MAP = {
+        1: 0,   # "00" -> M = 1 (Bypass: 500 kSPS Lab Scope)
+        10: 1,  # "01" -> M = 10 (50 kSPS Full Audio)
+        20: 2,  # "10" -> M = 20 (25 kSPS Speech / Vocal)
+        50: 3   # "11" -> M = 50 (10 kSPS Deep Bass Zoom)
+    }
+    REVERSE_DECIMATION_MAP = {0: 1, 1: 10, 2: 20, 3: 50}
+
     def __init__(self, overlay_or_mmio: Union[object, MMIO], clock_freq_hz: int = 100_000_000):
         self.clock_freq_hz = clock_freq_hz
         self.max_voltage = 3.3
 
-        # Dynamically discover MMIO from overlay or use provided MMIO directly
         if isinstance(overlay_or_mmio, MMIO):
             self.mmio = overlay_or_mmio
         elif hasattr(overlay_or_mmio, "axis_trigger_unit_0"):
@@ -1475,7 +1564,7 @@ class HardwareTrigger:
         else:
             self.mmio = MMIO(0x43C10000, 65536)
 
-        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, Trigger on CH1 (A0)
+        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, CH1 (A0), M=10, N=2048
         self.configure(
             mode="Auto",
             edge="Rising",
@@ -1484,6 +1573,10 @@ class HardwareTrigger:
             timeout_ms=50.0,
             hysteresis_volts=0.02
         )
+
+    # =========================================================================
+    # 1. Trigger & Acquisition Settings
+    # =========================================================================
 
     def configure(
         self,
@@ -1506,12 +1599,10 @@ class HardwareTrigger:
         """Set trigger source channel: 'CH1' (A0) or 'CH2' (A1)."""
         src_clean = source.strip().upper()
         ctrl = self.mmio.read(self.REG_CONTROL)
-
         if "CH2" in src_clean or "A1" in src_clean:
             ctrl |= self.BIT_TRIG_SRC_CH2
         else:
             ctrl &= ~self.BIT_TRIG_SRC_CH2
-
         self.mmio.write(self.REG_CONTROL, ctrl)
 
     def get_source(self) -> str:
@@ -1523,7 +1614,6 @@ class HardwareTrigger:
         """Set trigger operating mode: 'Auto', 'Normal', or 'Single'."""
         mode_clean = mode.strip().capitalize()
         ctrl = self.mmio.read(self.REG_CONTROL)
-
         if mode_clean == "Auto":
             ctrl |= (self.BIT_ARM | self.BIT_AUTO_MODE)
             ctrl &= ~self.BIT_SINGLE_SHOT
@@ -1535,21 +1625,18 @@ class HardwareTrigger:
             ctrl &= ~self.BIT_AUTO_MODE
         else:
             raise ValueError(f"Invalid mode '{mode}'. Choose from: 'Auto', 'Normal', 'Single'.")
-
         self.mmio.write(self.REG_CONTROL, ctrl)
 
     def set_edge(self, edge: str):
         """Set trigger slope direction: 'Rising' or 'Falling'."""
         edge_clean = edge.strip().capitalize()
         ctrl = self.mmio.read(self.REG_CONTROL)
-
         if edge_clean == "Rising":
             ctrl &= ~self.BIT_EDGE_FALLING
         elif edge_clean == "Falling":
             ctrl |= self.BIT_EDGE_FALLING
         else:
             raise ValueError(f"Invalid edge '{edge}'. Choose from: 'Rising' or 'Falling'.")
-
         self.mmio.write(self.REG_CONTROL, ctrl)
 
     def set_threshold(self, volts: float):
@@ -1597,6 +1684,67 @@ class HardwareTrigger:
         ctrl = self.mmio.read(self.REG_CONTROL)
         self.mmio.write(self.REG_CONTROL, ctrl | self.BIT_FORCE_TRIG)
 
+    # =========================================================================
+    # 2. Phase 2.5 Runtime Timing & Multi-Regime Controls
+    # =========================================================================
+
+    def set_decimation(self, factor: int):
+        """
+        Configures the hardware AXI-Stream decimator ratio M.
+        
+        :param factor: 1 (Bypass: 500 kSPS), 10 (50 kSPS), 20 (25 kSPS), or 50 (10 kSPS).
+        """
+        if factor not in self.DECIMATION_MAP:
+            raise ValueError(f"Invalid decimation factor {factor}. Choose from: 1, 10, 20, 50.")
+        code = self.DECIMATION_MAP[factor]
+        self.mmio.write(self.REG_DECIMATION, code)
+
+    def get_decimation(self) -> int:
+        """Reads active hardware decimation factor M."""
+        code = self.mmio.read(self.REG_DECIMATION) & 0x3
+        return self.REVERSE_DECIMATION_MAP.get(code, 10)
+
+    def set_fft_config(self, n_points: int = 2048, forward: bool = True):
+        """
+        Dynamically configures the Xilinx LogiCORE FFT core via the 16-bit s_axis_config bus.
+        
+        :param n_points: Transform length (supported: 512, 1024, 2048).
+        :param forward: True for Forward FFT, False for Inverse FFT (IFFT).
+        """
+        valid_sizes = {512: 9, 1024: 10, 2048: 11}
+        if n_points not in valid_sizes:
+            raise ValueError(f"Invalid FFT size {n_points}. Supported sizes: 512, 1024, 2048.")
+        
+        nfft = valid_sizes[n_points]
+        fwd_bit = 1 if forward else 0
+        
+        # 16-bit configuration word: Byte 1 = NFFT, Byte 0 = FWD_INV
+        config_word = (nfft << 8) | fwd_bit
+        self.mmio.write(self.REG_FFT_CONFIG, config_word)
+
+    def get_fft_length(self) -> int:
+        """Reads active FFT transform length N from hardware register."""
+        raw = self.mmio.read(self.REG_FFT_CONFIG)
+        nfft = (raw >> 8) & 0x1F
+        return 2 ** nfft
+
+    def set_packet_size(self, size_samples: int):
+        """
+        Configures the hardware TLAST packetizer limit.
+        
+        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048).
+        """
+        clamped = max(64, min(65535, int(size_samples)))
+        self.mmio.write(self.REG_PACKET_SIZE, clamped)
+
+    def get_packet_size(self) -> int:
+        """Reads active hardware TLAST packet size."""
+        return self.mmio.read(self.REG_PACKET_SIZE) & 0xFFFF
+
+    # =========================================================================
+    # Status Properties
+    # =========================================================================
+
     @property
     def is_armed(self) -> bool:
         return bool(self.mmio.read(self.REG_STATUS) & self.STATUS_ARMED)
@@ -1611,18 +1759,21 @@ class HardwareTrigger:
         edge = "Falling" if (ctrl & self.BIT_EDGE_FALLING) else "Rising"
         mode = "Auto" if (ctrl & self.BIT_AUTO_MODE) else ("Single" if (ctrl & self.BIT_SINGLE_SHOT) else "Normal")
         armed = "ARMED" if (ctrl & self.BIT_ARM) else "DISARMED"
-        thresh = self.get_threshold()
-        return f"<HardwareTrigger: {armed}, Source={src}, Mode={mode}, Edge={edge}, Threshold={thresh:.2f}V>"```
+        m = self.get_decimation()
+        n = self.get_fft_length()
+        pkt = self.get_packet_size()
+        return f"<HardwareTrigger: {armed}, Src={src}, Mode={mode}, Edge={edge}, M={m}x, N={n}, Pkt={pkt}>"```
 
 overlay.py:
 
 ```python
 """
-pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Oscilloscope & Audio Spectrum Analyzer.
+pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
+Features runtime profile switching (Lab Scope, Audio, Speech, Bass Zoom), non-blocking DMA polling, and Jupyter audio playback.
 """
 
 from pathlib import Path
-from typing import Union, Optional, Tuple
+from typing import Union, Optional, Tuple, Dict
 import time
 import numpy as np
 from pynq import Overlay, allocate
@@ -1638,8 +1789,15 @@ from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel 1 MSPS Oscilloscope & 50 kSPS Audio Spectrum Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
     """
+
+    PROFILES = {
+        "oscilloscope": {"m": 1,  "n": 2048, "fs_per_ch": 500_000.0, "desc": "Wideband Lab Scope (0 - 250 kHz)"},
+        "audio":        {"m": 10, "n": 2048, "fs_per_ch": 50_000.0,  "desc": "Full-Band Audio (0 - 25 kHz, Δf=24.4Hz)"},
+        "speech":       {"m": 20, "n": 2048, "fs_per_ch": 25_000.0,  "desc": "Speech / Vocal Band (0 - 12.5 kHz, Δf=12.2Hz)"},
+        "bass_zoom":    {"m": 50, "n": 2048, "fs_per_ch": 10_000.0,  "desc": "Deep Bass Zoom (0 - 5 kHz, Δf=4.88Hz)"}
+    }
 
     def __init__(
         self,
@@ -1658,6 +1816,7 @@ class OscilloscopeOverlay(Overlay):
 
         self.packet_size = packet_size
         self.fft_points = fft_points
+        self.current_profile = "audio"
         self.fs_per_ch = 50_000.0
         
         self.trigger = HardwareTrigger(self)
@@ -1665,16 +1824,91 @@ class OscilloscopeOverlay(Overlay):
         self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=self.fs_per_ch)
         self.wavegen = AD3SignalGenerator()
 
+        # Apply default Audio profile (M=10, N=2048)
+        self.set_profile("audio")
+
+    # =========================================================================
+    # 1. Multi-Regime Profile Switcher
+    # =========================================================================
+
+    def set_profile(
+        self,
+        mode: str = "audio",
+        decimation: Optional[int] = None,
+        fft_size: Optional[int] = None,
+        packet_size: Optional[int] = None
+    ) -> Dict:
+        """
+        Dynamically configures Decimator (M), FFT Length (N), and Packetizer boundaries.
+
+        :param mode: Profile name: 'oscilloscope', 'audio', 'speech', or 'bass_zoom'.
+        :param decimation: Manual override for decimation factor M (1, 10, 20, 50).
+        :param fft_size: Manual override for FFT transform length N (512, 1024, 2048).
+        :param packet_size: Manual override for DMA packet size.
+        """
+        mode_clean = mode.lower().strip()
+        base_cfg = self.PROFILES.get(mode_clean, self.PROFILES["audio"])
+        
+        m_val = decimation if decimation is not None else base_cfg["m"]
+        n_val = fft_size if fft_size is not None else base_cfg["n"]
+        pkt_val = packet_size if packet_size is not None else n_val
+
+        # 1. Update Hardware Registers
+        self.trigger.set_decimation(m_val)
+        self.trigger.set_fft_config(n_points=n_val, forward=True)
+        self.trigger.set_packet_size(pkt_val)
+
+        # 2. Update Driver State
+        self.current_profile = mode_clean
+        self.packet_size = pkt_val
+        self.fft_points = n_val
+        self.fs_per_ch = 500_000.0 / m_val
+
+        # 3. Update FFT Grid
+        self.fft.fft_points = n_val
+        self.fft.num_bins = n_val // 2
+        self.fft.sample_rate_hz = self.fs_per_ch
+        self.fft.delta_f = self.fs_per_ch / n_val
+        self.fft.freq_axis = np.arange(self.fft.num_bins) * self.fft.delta_f
+
+        info = {
+            "mode": mode_clean,
+            "decimation_M": m_val,
+            "sample_rate_hz": self.fs_per_ch,
+            "time_window_ms": ((pkt_val // 2) / self.fs_per_ch) * 1000.0,
+            "fft_points_N": n_val,
+            "delta_f_hz": self.fft.delta_f,
+            "max_frequency_hz": self.fs_per_ch / 2.0
+        }
+        return info
+
+    def get_profile_info(self) -> Dict:
+        """Returns the active operating parameters."""
+        pkt = self.trigger.get_packet_size()
+        return {
+            "mode": self.current_profile,
+            "decimation_M": self.trigger.get_decimation(),
+            "sample_rate_hz": self.fs_per_ch,
+            "time_window_ms": ((pkt // 2) / self.fs_per_ch) * 1000.0,
+            "fft_points_N": self.trigger.get_fft_length(),
+            "delta_f_hz": self.fft.delta_f,
+            "max_frequency_hz": self.fs_per_ch / 2.0
+        }
+
+    # =========================================================================
+    # 2. Synchronized Audio & Stereo Capture (Hardened Non-Blocking Polling)
+    # =========================================================================
+
     def capture_stereo(
         self,
         crop_startup_samples: int = 8,
         timeout: float = 2.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Synchronously captures dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        using safe non-blocking polling on Time DMA 0 with automatic XADC sequencer initialization.
+        Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
+        with non-blocking timeout polling.
         """
-        # 1. Initialize XADC continuous sequence for Vaux1 (A0) and Vaux9 (A1)
+        # 1. Initialize XADC continuous sequence
         if hasattr(self, "xadc_wiz_0"):
             self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41 = Continuous Sequence Mode
             self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
@@ -1712,10 +1946,10 @@ class OscilloscopeOverlay(Overlay):
 
                 buf_time.close()
                 return voltages_ch1, voltages_ch2
-            time.sleep(0.005)
+            time.sleep(0.01)
 
         buf_time.close()
-        raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or signal.")
+        raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or mode.")
 
     def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
         """Captures Channel 1 (A0)."""
@@ -1725,6 +1959,37 @@ class OscilloscopeOverlay(Overlay):
     def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
         """Captures hardware decimated audio FFT spectrum from Channel 1."""
         return self.fft.capture_spectrum(unit=unit)
+
+    # =========================================================================
+    # 3. Jupyter Audio Playback
+    # =========================================================================
+
+    def play_audio(self, channel: int = 1, custom_data: Optional[np.ndarray] = None):
+        """
+        Plays captured microphone audio directly inside the Jupyter Notebook.
+        
+        :param channel: 1 for Mic 1 (A0), 2 for Mic 2 (A1).
+        :param custom_data: Optional numpy array of audio samples to play instead.
+        """
+        try:
+            from IPython.display import Audio, display
+        except ImportError:
+            raise RuntimeError("IPython is required for audio playback.")
+
+        if custom_data is not None:
+            audio_samples = custom_data
+        else:
+            v_a0, v_a1 = self.capture_stereo()
+            audio_samples = v_a0 if channel == 1 else v_a1
+
+        ac_signal = audio_samples - np.mean(audio_samples)
+        max_val = np.max(np.abs(ac_signal))
+        normalized_audio = (ac_signal / max_val) if max_val > 1e-4 else ac_signal
+        display(Audio(normalized_audio, rate=int(self.fs_per_ch)))
+
+    # =========================================================================
+    # 4. Interactive Dashboards
+    # =========================================================================
 
     def dashboard(self, display_window: int = 1024):
         """Launches the general Oscilloscope Dashboard."""
@@ -2291,13 +2556,13 @@ class OscilloscopeOverlay(Overlay):
    "source": [
     "# Notebook 5: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
     "\n",
-    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.4.0`).\n",
+    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.4.5`).\n",
     "\n",
     "Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), this dashboard runs completely independently without requiring an Analog Discovery 3 (AD3).\n",
     "\n",
     "### 🌟 Audio Instrument Features:\n",
     "- 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.\n",
-    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
+    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
     "- 🚨 **Real-Time VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\\,\\text{V}$ or $V > 3.10\\,\\text{V}$).\n",
     "- 🎯 **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\\pm 0.5\\,\\text{Hz}$ accuracy.\n",
     "- 🪟 **Hann-Windowed Spectral Analysis:** Suppresses spectral leakage by $>32\\,\\text{dB}$ for clean harmonic overtone visualization.\n",
@@ -2338,8 +2603,9 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "outputs": [],
    "source": [
-    "# 1. Initialize Dual-Channel Decimated Audio Overlay (v1.4.0)\n",
-    "ol = OscilloscopeOverlay()"
+    "# 1. Initialize Dual-Channel Decimated Audio Overlay\n",
+    "ol = OscilloscopeOverlay()\n",
+    "ol.set_profile(\"audio\")"
    ]
   },
   {
