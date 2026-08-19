@@ -5,13 +5,14 @@ Current Branch: feat/pl-audio-decimation
 Branch Tracking Status:
   feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-audio-decimation  99916b1 [origin/feat/pl-audio-decimation] test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument
+* feat/pl-audio-decimation  54455e5 [origin/feat/pl-audio-decimation] fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
   main                      82e5005 [origin/main] merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard
 
 Git Commit Graph & History:
-* 99916b1  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument (SiririComun)
+* 54455e5  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard (SiririComun)
+* 99916b1  - 2026-08-19 : test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument (SiririComun)
 * c53c576  - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
 * 21bb110  - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
 * 1ce59ff  - 2026-08-19 : fix(overlay): implement non-blocking safe capture_stereo with XADC sequencer auto-init (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 *   82e5005  (tag: v1.3.0, origin/main, origin/HEAD, main) - 2026-08-16 : merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard (SiririComun)
 |\  
 | * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
-| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)
-| * 5c619cc  - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)```
+| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)```
 
 Files structure: 
 
@@ -58,8 +58,7 @@ Files structure:
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
 │   ├── 04_fft_spectrum_analyzer.ipynb
-│   ├── 05_audio_dashboard.ipynb
-│   └── 06_audio_fft_microphone_test.ipynb
+│   └── 05_audio_dashboard.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── audio_dashboard.py
@@ -76,7 +75,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 36 files
+8 directories, 35 files
 ```
 
 pypi.yml:
@@ -121,7 +120,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.4.0-rc1"
+    "version": "v1.4.0"
 }```
 
 setup.py:
@@ -2383,239 +2382,6 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
-06_audio_fft_microphone_test.ipynb:
-
-```json
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook 6: Real-Time Audio Decimation, High-Resolution FFT & Microphone Validation\n",
-    "\n",
-    "This notebook verifies the **Phase 2 (`v1.4.0-rc1`)** hardware and software audio stack on the PYNQ-Z2.\n",
-    "\n",
-    "### 🌟 Key Improvements in v1.4.0:\n",
-    "- 🎙 **Hardware PL Decimator ($M=10\\times$):** Converts the raw 500 kSPS stream to an anti-aliased **50 kSPS audio stream**.\n",
-    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Time Window:** Captures multiple full wave periods of bass ($50\\,\\text{Hz} - 250\\,\\text{Hz}$) and vocal frequencies.\n",
-    "- 📊 **High-Resolution Audio FFT ($\\Delta f \\approx 24.41\\,\\text{Hz}$):** Resolves individual musical notes and speech formants across $0 - 25\\,\\text{kHz}$.\n",
-    "- 🎯 **Sub-Bin Quadratic Peak Interpolation:** Delivers sub-Hertz frequency tracking accuracy ($\\pm 0.2\\,\\text{Hz} - 0.5\\,\\text{Hz}$).\n",
-    "- 🎛 **Dedicated `AudioDashboard`:** Complete dark-mode instrument designed specifically for passive MAX4466 microphones with live clipping warning detectors."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 1. System Setup & Overlay Initialization\n",
-    "Initialize `OscilloscopeOverlay()`. It automatically downloads the `v1.4.0-rc1` bitstream containing the PL audio decimator."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
-    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
-    "import numpy as np\n",
-    "import plotly.graph_objects as go\n",
-    "from plotly.subplots import make_subplots\n",
-    "\n",
-    "# Ensure bus permissions\n",
-    "check_usb_permissions()\n",
-    "\n",
-    "# Load Dual-Channel Decimated Audio Overlay (v1.4.0-rc1)\n",
-    "ol = OscilloscopeOverlay()\n",
-    "\n",
-    "print(\"✅ Decimated Audio Overlay loaded successfully!\")\n",
-    "print(f\"  • Audio Sample Rate : {ol.fft.sample_rate_hz/1e3:.1f} kSPS per channel\")\n",
-    "print(f\"  • Time Window       : {(1024 / ol.fft.sample_rate_hz) * 1000.0:.2f} ms per 1024-sample frame\")\n",
-    "print(f\"  • FFT Bin Spacing   : Δf = {ol.fft.delta_f:.3f} Hz per bin (0 Hz to 25 kHz)\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 2. MAX4466 Microphone Resting Bias & Saturation Check\n",
-    "Verify that the resting DC level of both microphones sits near the mid-rail ($1.65\\,\\text{V}$) and check that the signal is not clipping ($0.10\\,\\text{V} < V < 3.10\\,\\text{V}$)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Set Trigger to Center Baseline (1.65V) in Auto Mode\n",
-    "ol.trigger.configure(mode=\"Auto\", edge=\"Rising\", source=\"CH1\", threshold_volts=1.65, timeout_ms=50.0)\n",
-    "\n",
-    "# Capture a single stereo frame (1024 samples per channel)\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "\n",
-    "mean_a0, vpp_a0 = float(np.mean(v_a0)), float(np.ptp(v_a0))\n",
-    "mean_a1, vpp_a1 = float(np.mean(v_a1)), float(np.ptp(v_a1))\n",
-    "\n",
-    "print(\"🎙 Microphone Status Check:\")\n",
-    "print(f\"  • Mic 1 (A0): DC Offset = {mean_a0:.2f} V | Vpp = {vpp_a0:.2f} V | Min = {v_a0.min():.2f} V, Max = {v_a0.max():.2f} V\")\n",
-    "print(f\"  • Mic 2 (A1): DC Offset = {mean_a1:.2f} V | Vpp = {vpp_a1:.2f} V | Min = {v_a1.min():.2f} V, Max = {v_a1.max():.2f} V\")\n",
-    "\n",
-    "# Saturation warnings\n",
-    "if v_a0.min() < 0.10 or v_a0.max() > 3.10:\n",
-    "    print(\"⚠️ WARNING: Mic 1 (A0) is CLIPPING! Rotate the back trimmer counter-clockwise to reduce gain.\")\n",
-    "else:\n",
-    "    print(\"✅ Mic 1 (A0) operating within linear dynamic range.\")\n",
-    "\n",
-    "if v_a1.min() < 0.10 or v_a1.max() > 3.10:\n",
-    "    print(\"⚠️ WARNING: Mic 2 (A1) is CLIPPING! Rotate the back trimmer counter-clockwise to reduce gain.\")\n",
-    "else:\n",
-    "    print(\"✅ Mic 2 (A1) operating within linear dynamic range.\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 3. Time-Domain Multi-Period Audio Waveform Capture\n",
-    "Speak, whistle, or play an acoustic test tone (e.g., $100\\,\\text{Hz}$ or $440\\,\\text{Hz}$) near the microphones. The plot below spans the full **$40.96\\,\\text{ms}$ time window**, clearly showing multiple complete wave cycles."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "import matplotlib.pyplot as plt\n",
-    "\n",
-    "# Capture real-time acoustic waveforms\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "time_ms = np.linspace(0, 40.96, len(v_a0))\n",
-    "\n",
-    "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 5.5), sharex=True, dpi=100)\n",
-    "\n",
-    "ax1.plot(time_ms, v_a0, color=\"#00A389\", linewidth=1.6, label=\"Mic 1: A0 (Vaux1)\")\n",
-    "ax1.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"DC Baseline (1.65V)\")\n",
-    "ax1.set_title(\"Dual Microphone Acoustic Time-Domain Capture (40.96 ms Window @ 50 kSPS)\", fontsize=11, fontweight=\"bold\")\n",
-    "ax1.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
-    "ax1.set_ylim(0, 3.3)\n",
-    "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax1.legend(loc=\"upper right\")\n",
-    "\n",
-    "ax2.plot(time_ms, v_a1, color=\"#D81B60\", linewidth=1.6, label=\"Mic 2: A1 (Vaux9)\")\n",
-    "ax2.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"DC Baseline (1.65V)\")\n",
-    "ax2.set_xlabel(\"Time (Milliseconds)\", fontsize=10)\n",
-    "ax2.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
-    "ax2.set_ylim(0, 3.3)\n",
-    "ax2.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "ax2.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. High-Resolution Audio Spectrum & Sub-Bin Peak Tracking\n",
-    "Calculate the Hann-windowed frequency spectrum and extract the dominant fundamental frequency ($f_0$) using **Quadratic (Parabolic) Peak Interpolation**."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Capture audio frames\n",
-    "v_a0, v_a1 = ol.capture_stereo()\n",
-    "n = len(v_a0)\n",
-    "\n",
-    "# 1. DC Baseline Removal & Hann Windowing\n",
-    "sig_a0 = (v_a0 - np.mean(v_a0)) * np.hanning(n)\n",
-    "sig_a1 = (v_a1 - np.mean(v_a1)) * np.hanning(n)\n",
-    "\n",
-    "# 2. Fast Fourier Transform (0 to 25 kHz)\n",
-    "freqs = np.fft.rfftfreq(n, d=1.0 / 50000.0)\n",
-    "mag_a0 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a0)) / (n / 2.0), 1e-6))\n",
-    "mag_a1 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a1)) / (n / 2.0), 1e-6))\n",
-    "\n",
-    "# 3. Sub-Bin Quadratic Peak Detection\n",
-    "peak_f0, peak_m0 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=20.0)\n",
-    "peak_f1, peak_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=20.0)\n",
-    "\n",
-    "print(f\"🎯 Dominant Pitch on Mic 1 (A0): {peak_f0:.2f} Hz ({peak_m0:.1f} dBV)\")\n",
-    "print(f\"🎯 Dominant Pitch on Mic 2 (A1): {peak_f1:.2f} Hz ({peak_m1:.1f} dBV)\")\n",
-    "\n",
-    "# Plot Spectrum (Zoomed to 0 - 3000 Hz for voice and bass)\n",
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs, mag_a0, color=\"#00A389\", linewidth=1.6, label=f\"Mic 1 Spectrum (Peak: {peak_f0:.1f} Hz)\")\n",
-    "plt.plot(freqs, mag_a1, color=\"#D81B60\", linewidth=1.4, alpha=0.8, label=f\"Mic 2 Spectrum (Peak: {peak_f1:.1f} Hz)\")\n",
-    "plt.scatter([peak_f0], [peak_m0], color=\"#FFA500\", s=50, zorder=5, label=\"Fundamental Marker\")\n",
-    "\n",
-    "plt.title(\"High-Resolution Audio Frequency Spectrum (Δf = 24.41 Hz)\", fontsize=11, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (Hz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 3000)  # Audio Zoom\n",
-    "plt.ylim(-90, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 5. Launch the Interactive Dedicated `AudioDashboard`\n",
-    "Launch the dedicated **`AudioDashboard`** for live multi-tab audio monitoring, real-time VU meter alerts, and acoustic spectrum analysis."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Launch Dedicated Audio & Microphone Dashboard\n",
-    "app = ol.audio_dashboard()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 6. Hardware Shutdown & Cleanup\n",
-    "Stop the acquisition and release the contiguous DMA memory buffers."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "app.stop()\n",
-    "ol.close()\n",
-    "print(\"🔒 Audio acquisition stopped and hardware memory released.\")"
-   ]
-  }
- ],
- "metadata": {
-  "language_info": {
-   "name": "python"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
-```
-
 generate_sw_summary.sh:
 
 ```bash
@@ -2691,7 +2457,6 @@ TARGET_FILES=(
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
     "notebooks/05_audio_dashboard.ipynb:json"
-    "notebooks/06_audio_fft_microphone_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 

@@ -70,7 +70,6 @@ TARGET_FILES=(
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
     "notebooks/05_audio_dashboard.ipynb:json"
-    "notebooks/06_audio_fft_microphone_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
