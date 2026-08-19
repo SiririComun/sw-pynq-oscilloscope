@@ -1,6 +1,6 @@
 """
 pynq_oscilloscope.dashboard: Full-Featured Interactive 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer UI.
-Aligned with the v1.4.0 50 kSPS decimated audio streaming hardware and robust direct AD3 wavegen.
+Features sub-sample trigger phase-locking, dynamic 5-period auto-ranging, and robust direct AD3 wavegen.
 """
 
 import time
@@ -110,7 +110,7 @@ class DirectAD3Wavegen:
 class OscilloscopeDashboard:
     """
     Complete 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard.
-    Operates at 50 kSPS audio rate (40.96 ms window) with dynamic trigger source routing.
+    Features dynamic 5-period auto-range scaling and jitter-free edge trigger locking.
     """
 
     def __init__(
@@ -123,7 +123,7 @@ class OscilloscopeDashboard:
         self.overlay = overlay
         self.packet_size = packet_size
         self.num_pts_per_ch = packet_size // 2  # 1024 samples per channel
-        self.fs_per_ch = 50_000.0               # 50 kSPS decimated audio rate
+        self.fs_per_ch = 50_000.0               # 50 kSPS audio rate
         self.fft_points = fft_points
         self.display_window = display_window
         self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 40.96 ms
@@ -240,7 +240,6 @@ class OscilloscopeDashboard:
         self.fig_ch1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t3")
         self.fig_ch1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch1_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch1_view.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=1, col=1)
         self.fig_ch1_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab 4: Channel 2 View
@@ -253,7 +252,6 @@ class OscilloscopeDashboard:
         self.fig_ch2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t4")
         self.fig_ch2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch2_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch2_view.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=1, col=1)
         self.fig_ch2_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
 
         self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_ch1_view, self.fig_ch2_view])
@@ -314,6 +312,22 @@ class OscilloscopeDashboard:
         clear_output(wait=True)
         display(widgets.VBox([self.control_panel, self.tabs]))
 
+    @staticmethod
+    def _find_trigger_edge(signal: np.ndarray, threshold: float, is_falling: bool) -> int:
+        """Finds the zero-crossing / threshold index to lock waveform phase on screen."""
+        if len(signal) < 10:
+            return 0
+        search_limit = min(len(signal) - 1, 200)
+        if is_falling:
+            for i in range(search_limit):
+                if signal[i] >= threshold and signal[i + 1] < threshold:
+                    return i
+        else:
+            for i in range(search_limit):
+                if signal[i] <= threshold and signal[i + 1] > threshold:
+                    return i
+        return 0
+
     def _update_loop(self):
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
@@ -364,7 +378,7 @@ class OscilloscopeDashboard:
                     p_v1 = v_a0[8:-8]
                     p_v2 = v_a1[8:-8]
 
-                    # Fast FFT with Hann Window
+                    # Spectrum with Hann Window
                     n = len(p_v1)
                     sig_a0 = (p_v1 - np.mean(p_v1)) * np.hanning(n)
                     sig_a1 = (p_v2 - np.mean(p_v2)) * np.hanning(n)
@@ -377,31 +391,52 @@ class OscilloscopeDashboard:
                     p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=20.0)
                     p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=20.0)
 
-                    t_ms = np.linspace(0, self.total_duration_ms, n)
                     trig_v = float(self.trig_level_slider.value)
+                    is_falling = (self.trig_edge_dd.value == "Falling")
+                    is_trig_a0 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
                     active_tab = self.tabs.selected_index
                     max_span = float(self.fft_span_dd.value)
-                    is_trig_a0 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
+
+                    # 1. Sub-sample Phase Lock: Find exact trigger edge in active channel
+                    trig_src_sig = p_v1 if is_trig_a0 else p_v2
+                    edge_offset = self._find_trigger_edge(trig_src_sig, trig_v, is_falling)
+
+                    # 2. Dynamic 5-Period Auto-Range Timebase
+                    active_f0 = p_f1 if is_trig_a0 else p_f2
+                    if self.autorange_toggle.value and active_f0 > 30.0:
+                        period_ms = 1000.0 / active_f0
+                        show_duration_ms = min(self.total_duration_ms, max(1.5, 5.0 * period_ms))
+                        show_pts = int((show_duration_ms / 1000.0) * self.fs_per_ch)
+                        show_pts = max(30, min(show_pts, len(p_v1) - edge_offset))
+                    else:
+                        show_pts = len(p_v1) - edge_offset
+                        show_duration_ms = (show_pts / self.fs_per_ch) * 1000.0
+
+                    # Slice precisely starting at the trigger edge
+                    plot_v1 = p_v1[edge_offset : edge_offset + show_pts]
+                    plot_v2 = p_v2[edge_offset : edge_offset + show_pts]
+                    t_ms = np.linspace(0, show_duration_ms, len(plot_v1))
 
                     # Update Active Tab
-                    if active_tab == 0:  # Tab 1: Scope
+                    if active_tab == 0:  # Tab 1: Dual Scope
                         with self.fig_dual_scope.batch_update():
                             self.fig_dual_scope.data[0].x = t_ms
-                            self.fig_dual_scope.data[0].y = p_v1
+                            self.fig_dual_scope.data[0].y = plot_v1
                             self.fig_dual_scope.data[2].x = t_ms
-                            self.fig_dual_scope.data[2].y = p_v2
+                            self.fig_dual_scope.data[2].y = plot_v2
                             if is_trig_a0:
-                                self.fig_dual_scope.data[1].x = [0, self.total_duration_ms]
+                                self.fig_dual_scope.data[1].x = [0, show_duration_ms]
                                 self.fig_dual_scope.data[1].y = [trig_v, trig_v]
                                 self.fig_dual_scope.data[1].visible = True
                                 self.fig_dual_scope.data[3].visible = False
                             else:
-                                self.fig_dual_scope.data[3].x = [0, self.total_duration_ms]
+                                self.fig_dual_scope.data[3].x = [0, show_duration_ms]
                                 self.fig_dual_scope.data[3].y = [trig_v, trig_v]
                                 self.fig_dual_scope.data[3].visible = True
                                 self.fig_dual_scope.data[1].visible = False
+                            self.fig_dual_scope.layout.xaxis2.range = [0, show_duration_ms]
 
-                    elif active_tab == 1:  # Tab 2: FFT
+                    elif active_tab == 1:  # Tab 2: Dual FFT
                         with self.fig_dual_fft.batch_update():
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
@@ -418,21 +453,23 @@ class OscilloscopeDashboard:
                     elif active_tab == 2:  # Tab 3: CH1 View
                         with self.fig_ch1_view.batch_update():
                             self.fig_ch1_view.data[0].x = t_ms
-                            self.fig_ch1_view.data[0].y = p_v1
-                            self.fig_ch1_view.data[1].x = [0, self.total_duration_ms]
+                            self.fig_ch1_view.data[0].y = plot_v1
+                            self.fig_ch1_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch1_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch1_view.data[2].x = freqs
                             self.fig_ch1_view.data[2].y = mag_a0
+                            self.fig_ch1_view.layout.xaxis.range = [0, show_duration_ms]
                             self.fig_ch1_view.layout.xaxis2.range = [0, max_span]
 
                     elif active_tab == 3:  # Tab 4: CH2 View
                         with self.fig_ch2_view.batch_update():
                             self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = p_v2
-                            self.fig_ch2_view.data[1].x = [0, self.total_duration_ms]
+                            self.fig_ch2_view.data[0].y = plot_v2
+                            self.fig_ch2_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch2_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch2_view.data[2].x = freqs
                             self.fig_ch2_view.data[2].y = mag_a1
+                            self.fig_ch2_view.layout.xaxis.range = [0, show_duration_ms]
                             self.fig_ch2_view.layout.xaxis2.range = [0, max_span]
 
                     # Status Bar Readouts
