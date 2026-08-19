@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Union, Optional, Tuple
 import time
 import numpy as np
-from pynq import Overlay
+from pynq import Overlay, allocate
 
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.xadc_dma import StreamingXADC
@@ -39,62 +39,66 @@ class OscilloscopeOverlay(Overlay):
 
         self.packet_size = packet_size
         self.fft_points = fft_points
+        self.fs_per_ch = 50_000.0
         
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
-        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=50_000.0)
+        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=self.fs_per_ch)
         self.wavegen = AD3SignalGenerator()
 
     def capture_stereo(
         self,
-        crop_startup_samples: int = 0,
-        timeout: float = 1.0
+        crop_startup_samples: int = 8,
+        timeout: float = 2.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Synchronously captures dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        while servicing both DMA engines to prevent broadcaster deadlock.
+        using safe non-blocking polling on Time DMA 0 with automatic XADC sequencer initialization.
         """
-        # 1. Reset channels if busy
-        t_wait = time.time()
-        while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
-            time.sleep(0.001)
-            if time.time() - t_wait > timeout:
-                try:
-                    self.xadc.dma.mmio.write(0x30, 0x04)
-                    self.fft.dma.mmio.write(0x30, 0x04)
-                    time.sleep(0.01)
-                    self.xadc.dma.recvchannel.start()
-                    self.fft.dma.recvchannel.start()
-                except Exception:
-                    pass
-                break
+        # 1. Initialize XADC continuous sequence for Vaux1 (A0) and Vaux9 (A1)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41 = Continuous Sequence Mode
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49 = Enable Vaux1 & Vaux9
 
-        # 2. Queue BOTH DMAs FIRST (Prevents Broadcaster Deadlock)
-        self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
-        self.fft.dma.recvchannel.transfer(self.fft._buffer)
+        # 2. Reset DMA 0
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        time.sleep(0.005)
+        self.axi_dma_0.recvchannel.start()
 
-        # 3. Arm Hardware Trigger
+        # 3. Queue receive buffer
+        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(buf_time)
+
+        # 4. Arm Hardware Trigger
         self.trigger.arm()
 
-        # 4. Wait for Hardware Completion
-        self.xadc.dma.recvchannel.wait()
-        self.fft.dma.recvchannel.wait()
+        # 5. Non-blocking Poll with Timeout
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.axi_dma_0.recvchannel.idle:
+                raw_samples = np.array(buf_time)
+                
+                # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
+                raw_ch1 = raw_samples[0::2]
+                raw_ch2 = raw_samples[1::2]
 
-        # 5. De-interleave Stereo Samples: Even = A0 (Ch1), Odd = A1 (Ch2)
-        raw_samples = np.array(self.xadc._buffer)
-        raw_ch1 = raw_samples[0::2]
-        raw_ch2 = raw_samples[1::2]
+                voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
+                voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
-        voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
+                # Crop boundary samples
+                if crop_startup_samples > 0 and len(voltages_ch1) > (2 * crop_startup_samples):
+                    voltages_ch1 = voltages_ch1[crop_startup_samples:-crop_startup_samples]
+                    voltages_ch2 = voltages_ch2[crop_startup_samples:-crop_startup_samples]
 
-        if crop_startup_samples > 0:
-            voltages_ch1 = voltages_ch1[crop_startup_samples:]
-            voltages_ch2 = voltages_ch2[crop_startup_samples:]
+                buf_time.close()
+                return voltages_ch1, voltages_ch2
+            time.sleep(0.005)
 
-        return voltages_ch1, voltages_ch2
+        buf_time.close()
+        raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or signal.")
 
-    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
         """Captures Channel 1 (A0)."""
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
@@ -103,34 +107,8 @@ class OscilloscopeOverlay(Overlay):
         """Captures hardware decimated audio FFT spectrum from Channel 1."""
         return self.fft.capture_spectrum(unit=unit)
 
-    def capture_both(
-        self,
-        unit: str = "dBV",
-        crop_startup_samples: int = 0,
-        timeout: float = 1.0
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Synchronously captures both Dual-Channel Time Domain and FFT Frequency Domain frames.
-        """
-        voltages_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples, timeout=timeout)
-
-        # Process FFT magnitude data
-        raw_fft = np.array(self.fft._buffer, copy=True)
-        raw_half = raw_fft[:self.fft.num_bins].astype(np.float64)
-        
-        unit_clean = unit.strip().upper()
-        if unit_clean == "LINEAR":
-            mags = (raw_half / 2048.0) * (3.3 / 4095.0) * 1000.0
-        elif unit_clean == "DBFS":
-            mags = 20.0 * np.log10(np.maximum(raw_half, 1.0) / 65535.0)
-        else:
-            linear_v = (raw_half / 2048.0) * (3.3 / 4095.0)
-            mags = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
-
-        return voltages_ch1, self.fft.freq_axis, mags
-
     def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard (AD3 Wavegen + Laboratory Scope)."""
+        """Launches the general Oscilloscope Dashboard."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
@@ -141,7 +119,7 @@ class OscilloscopeOverlay(Overlay):
         return dash
 
     def audio_dashboard(self):
-        """Launches the dedicated Audio & Microphone Dashboard (50 kSPS Decimated Audio)."""
+        """Launches the dedicated Audio & Microphone Dashboard."""
         dash = AudioDashboard(
             overlay=self,
             packet_size=self.packet_size,

@@ -5,13 +5,14 @@ Current Branch: feat/pl-audio-decimation
 Branch Tracking Status:
   feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-audio-decimation  64fe422 [origin/feat/pl-audio-decimation] fix(ad3): correct pydwf device enumeration in has_device method
+* feat/pl-audio-decimation  660ad7d [origin/feat/pl-audio-decimation] fix(ad3): correct device enumeration to enable AD3 wavegen on v1.4.0
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
   main                      82e5005 [origin/main] merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard
 
 Git Commit Graph & History:
-* 64fe422  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-18 : fix(ad3): correct pydwf device enumeration in has_device method (SiririComun)
+* 660ad7d  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(ad3): correct device enumeration to enable AD3 wavegen on v1.4.0 (SiririComun)
+* 64fe422  - 2026-08-18 : fix(ad3): correct pydwf device enumeration in has_device method (SiririComun)
 * f9009b1  - 2026-08-18 : chore(release): bump version to 1.4.0 and pin hardware overlay to v1.4.0-rc1 (SiririComun)
 * 4a29daa  - 2026-08-18 : test(notebook): add 06_audio_fft_microphone_test for acoustic validation (SiririComun)
 * 2be1288  - 2026-08-18 : feat(dashboard): add dedicated AudioDashboard with clipping detection and 40.96ms timebase (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 | * 05efd58  - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)
 | * 60a756a  - 2026-08-16 : feat(dashboard): add 4-tab dual-channel instrument and selectable hardware trigger source (SiririComun)
 | * 547c906  - 2026-08-16 : feat(dashboard): implement real-time dual-channel oscilloscope and dual wavegen UI (SiririComun)
-| * 4e8fb23  - 2026-08-16 : test(notebook): update 05_dual_channel_test with hardened XADC sequencer init and dual-channel verification (SiririComun)
-| * cab1c25  - 2026-08-16 : fix(overlay): queue dual DMAs in capture_stereo to prevent broadcaster deadlock (SiririComun)```
+| * 4e8fb23  - 2026-08-16 : test(notebook): update 05_dual_channel_test with hardened XADC sequencer init and dual-channel verification (SiririComun)```
 
 Files structure: 
 
@@ -1638,7 +1638,7 @@ from pathlib import Path
 from typing import Union, Optional, Tuple
 import time
 import numpy as np
-from pynq import Overlay
+from pynq import Overlay, allocate
 
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.xadc_dma import StreamingXADC
@@ -1671,62 +1671,66 @@ class OscilloscopeOverlay(Overlay):
 
         self.packet_size = packet_size
         self.fft_points = fft_points
+        self.fs_per_ch = 50_000.0
         
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
-        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=50_000.0)
+        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=self.fs_per_ch)
         self.wavegen = AD3SignalGenerator()
 
     def capture_stereo(
         self,
-        crop_startup_samples: int = 0,
-        timeout: float = 1.0
+        crop_startup_samples: int = 8,
+        timeout: float = 2.0
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Synchronously captures dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        while servicing both DMA engines to prevent broadcaster deadlock.
+        using safe non-blocking polling on Time DMA 0 with automatic XADC sequencer initialization.
         """
-        # 1. Reset channels if busy
-        t_wait = time.time()
-        while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
-            time.sleep(0.001)
-            if time.time() - t_wait > timeout:
-                try:
-                    self.xadc.dma.mmio.write(0x30, 0x04)
-                    self.fft.dma.mmio.write(0x30, 0x04)
-                    time.sleep(0.01)
-                    self.xadc.dma.recvchannel.start()
-                    self.fft.dma.recvchannel.start()
-                except Exception:
-                    pass
-                break
+        # 1. Initialize XADC continuous sequence for Vaux1 (A0) and Vaux9 (A1)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41 = Continuous Sequence Mode
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49 = Enable Vaux1 & Vaux9
 
-        # 2. Queue BOTH DMAs FIRST (Prevents Broadcaster Deadlock)
-        self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
-        self.fft.dma.recvchannel.transfer(self.fft._buffer)
+        # 2. Reset DMA 0
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        time.sleep(0.005)
+        self.axi_dma_0.recvchannel.start()
 
-        # 3. Arm Hardware Trigger
+        # 3. Queue receive buffer
+        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(buf_time)
+
+        # 4. Arm Hardware Trigger
         self.trigger.arm()
 
-        # 4. Wait for Hardware Completion
-        self.xadc.dma.recvchannel.wait()
-        self.fft.dma.recvchannel.wait()
+        # 5. Non-blocking Poll with Timeout
+        start = time.time()
+        while time.time() - start < timeout:
+            if self.axi_dma_0.recvchannel.idle:
+                raw_samples = np.array(buf_time)
+                
+                # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
+                raw_ch1 = raw_samples[0::2]
+                raw_ch2 = raw_samples[1::2]
 
-        # 5. De-interleave Stereo Samples: Even = A0 (Ch1), Odd = A1 (Ch2)
-        raw_samples = np.array(self.xadc._buffer)
-        raw_ch1 = raw_samples[0::2]
-        raw_ch2 = raw_samples[1::2]
+                voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
+                voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
-        voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
+                # Crop boundary samples
+                if crop_startup_samples > 0 and len(voltages_ch1) > (2 * crop_startup_samples):
+                    voltages_ch1 = voltages_ch1[crop_startup_samples:-crop_startup_samples]
+                    voltages_ch2 = voltages_ch2[crop_startup_samples:-crop_startup_samples]
 
-        if crop_startup_samples > 0:
-            voltages_ch1 = voltages_ch1[crop_startup_samples:]
-            voltages_ch2 = voltages_ch2[crop_startup_samples:]
+                buf_time.close()
+                return voltages_ch1, voltages_ch2
+            time.sleep(0.005)
 
-        return voltages_ch1, voltages_ch2
+        buf_time.close()
+        raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or signal.")
 
-    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
         """Captures Channel 1 (A0)."""
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
@@ -1735,34 +1739,8 @@ class OscilloscopeOverlay(Overlay):
         """Captures hardware decimated audio FFT spectrum from Channel 1."""
         return self.fft.capture_spectrum(unit=unit)
 
-    def capture_both(
-        self,
-        unit: str = "dBV",
-        crop_startup_samples: int = 0,
-        timeout: float = 1.0
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Synchronously captures both Dual-Channel Time Domain and FFT Frequency Domain frames.
-        """
-        voltages_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples, timeout=timeout)
-
-        # Process FFT magnitude data
-        raw_fft = np.array(self.fft._buffer, copy=True)
-        raw_half = raw_fft[:self.fft.num_bins].astype(np.float64)
-        
-        unit_clean = unit.strip().upper()
-        if unit_clean == "LINEAR":
-            mags = (raw_half / 2048.0) * (3.3 / 4095.0) * 1000.0
-        elif unit_clean == "DBFS":
-            mags = 20.0 * np.log10(np.maximum(raw_half, 1.0) / 65535.0)
-        else:
-            linear_v = (raw_half / 2048.0) * (3.3 / 4095.0)
-            mags = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
-
-        return voltages_ch1, self.fft.freq_axis, mags
-
     def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard (AD3 Wavegen + Laboratory Scope)."""
+        """Launches the general Oscilloscope Dashboard."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
@@ -1773,7 +1751,7 @@ class OscilloscopeOverlay(Overlay):
         return dash
 
     def audio_dashboard(self):
-        """Launches the dedicated Audio & Microphone Dashboard (50 kSPS Decimated Audio)."""
+        """Launches the dedicated Audio & Microphone Dashboard."""
         dash = AudioDashboard(
             overlay=self,
             packet_size=self.packet_size,
