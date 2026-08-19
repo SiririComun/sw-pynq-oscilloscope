@@ -7,11 +7,12 @@ Branch Tracking Status:
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation  96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
+* feat/runtime-config-audio 209d684 [origin/feat/runtime-config-audio] feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback
   main                      96e8763 [origin/main] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
 
 Git Commit Graph & History:
-* 0536773  (HEAD -> feat/runtime-config-audio, origin/feat/runtime-config-audio) - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
+* 209d684  (HEAD -> feat/runtime-config-audio, origin/feat/runtime-config-audio) - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
+* 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
 * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)
 * e5b6a9a  - 2026-08-18 : feat(overlay): implement unified multi-regime profile switcher and audio playback (SiririComun)
 * afa7875  - 2026-08-18 : feat(fft): implement multi-windowing engine (Hann, Hamming, Blackman, Flat-Top) (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 *   82e5005  (tag: v1.3.0) - 2026-08-16 : merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard (SiririComun)
 |\  
 | * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
-| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)
-| * 5c619cc  - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)```
+| * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)```
 
 Files structure: 
 
@@ -2574,7 +2574,7 @@ class OscilloscopeOverlay(Overlay):
     "\n",
     "### 🌟 Audio Instrument Features:\n",
     "- 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.\n",
-    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
+    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
     "- 🚨 **Real-Time VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\\,\\text{V}$ or $V > 3.10\\,\\text{V}$).\n",
     "- 🎯 **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\\pm 0.5\\,\\text{Hz}$ accuracy.\n",
     "- 🪟 **Hann-Windowed Spectral Analysis:** Suppresses spectral leakage by $>32\\,\\text{dB}$ for clean harmonic overtone visualization.\n",
@@ -2671,11 +2671,11 @@ class OscilloscopeOverlay(Overlay):
    "source": [
     "# Notebook 6: Real-Time Audio Decimation, High-Resolution FFT & Microphone Validation\n",
     "\n",
-    "This notebook verifies the **Phase 2 (`v1.4.0-rc1`)** hardware and software audio stack on the PYNQ-Z2.\n",
+    "This notebook verifies the **Phase 2.5 (`v1.4.5-rc1`)** hardware and software audio stack on the PYNQ-Z2.\n",
     "\n",
-    "### 🌟 Key Improvements in v1.4.0:\n",
+    "### 🌟 Key Improvements in v1.4.5:\n",
     "- 🎙 **Hardware PL Decimator ($M=10\\times$):** Converts the raw 500 kSPS stream to an anti-aliased **50 kSPS audio stream**.\n",
-    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Time Window:** Captures multiple full wave periods of bass ($50\\,\\text{Hz} - 250\\,\\text{Hz}$) and vocal frequencies.\n",
+    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Time Window:** Captures multiple full wave periods of bass ($50\\,\\text{Hz} - 250\\,\\text{Hz}$) and vocal frequencies.\n",
     "- 📊 **High-Resolution Audio FFT ($\\Delta f \\approx 24.41\\,\\text{Hz}$):** Resolves individual musical notes and speech formants across $0 - 25\\,\\text{kHz}$.\n",
     "- 🎯 **Sub-Bin Quadratic Peak Interpolation:** Delivers sub-Hertz frequency tracking accuracy ($\\pm 0.2\\,\\text{Hz} - 0.5\\,\\text{Hz}$).\n",
     "- 🎛 **Dedicated `AudioDashboard`:** Complete dark-mode instrument designed specifically for passive MAX4466 microphones with live clipping warning detectors."
@@ -2686,7 +2686,7 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "source": [
     "## 1. System Setup & Overlay Initialization\n",
-    "Initialize `OscilloscopeOverlay()`. It automatically downloads the `v1.4.0-rc1` bitstream containing the PL audio decimator."
+    "Initialize `OscilloscopeOverlay()`. It automatically loads the `v1.4.5-rc1` bitstream containing the PL audio decimator."
    ]
   },
   {
@@ -2704,13 +2704,14 @@ class OscilloscopeOverlay(Overlay):
     "# Ensure bus permissions\n",
     "check_usb_permissions()\n",
     "\n",
-    "# Load Dual-Channel Decimated Audio Overlay (v1.4.0-rc1)\n",
+    "# Load Dual-Channel Decimated Audio Overlay\n",
     "ol = OscilloscopeOverlay()\n",
+    "info = ol.set_profile(\"audio\")\n",
     "\n",
     "print(\"✅ Decimated Audio Overlay loaded successfully!\")\n",
-    "print(f\"  • Audio Sample Rate : {ol.fft.sample_rate_hz/1e3:.1f} kSPS per channel\")\n",
-    "print(f\"  • Time Window       : {(1024 / ol.fft.sample_rate_hz) * 1000.0:.2f} ms per 1024-sample frame\")\n",
-    "print(f\"  • FFT Bin Spacing   : Δf = {ol.fft.delta_f:.3f} Hz per bin (0 Hz to 25 kHz)\")"
+    "print(f\"  • Audio Sample Rate : {info['sample_rate_hz']/1e3:.1f} kSPS per channel\")\n",
+    "print(f\"  • Time Window       : {info['time_window_ms']:.2f} ms per 1024-sample frame\")\n",
+    "print(f\"  • FFT Bin Spacing   : Δf = {info['delta_f_hz']:.3f} Hz per bin (0 Hz to 25 kHz)\")"
    ]
   },
   {
@@ -2757,7 +2758,7 @@ class OscilloscopeOverlay(Overlay):
    "metadata": {},
    "source": [
     "## 3. Time-Domain Multi-Period Audio Waveform Capture\n",
-    "Speak, whistle, or play an acoustic test tone (e.g., $100\\,\\text{Hz}$ or $440\\,\\text{Hz}$) near the microphones. The plot below spans the full **$40.96\\,\\text{ms}$ time window**, clearly showing multiple complete wave cycles."
+    "Speak, whistle, or play an acoustic test tone (e.g., $100\\,\\text{Hz}$ or $440\\,\\text{Hz}$) near the microphones. The plot below spans the full **$20.48\\,\\text{ms}$ time window**, clearly showing multiple complete wave cycles."
    ]
   },
   {
@@ -2770,13 +2771,13 @@ class OscilloscopeOverlay(Overlay):
     "\n",
     "# Capture real-time acoustic waveforms\n",
     "v_a0, v_a1 = ol.capture_stereo()\n",
-    "time_ms = np.linspace(0, 40.96, len(v_a0))\n",
+    "time_ms = np.linspace(0, 20.48, len(v_a0))\n",
     "\n",
     "fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 5.5), sharex=True, dpi=100)\n",
     "\n",
     "ax1.plot(time_ms, v_a0, color=\"#00A389\", linewidth=1.6, label=\"Mic 1: A0 (Vaux1)\")\n",
     "ax1.axhline(1.65, color=\"#FFA500\", linestyle=\"--\", alpha=0.7, label=\"DC Baseline (1.65V)\")\n",
-    "ax1.set_title(\"Dual Microphone Acoustic Time-Domain Capture (40.96 ms Window @ 50 kSPS)\", fontsize=11, fontweight=\"bold\")\n",
+    "ax1.set_title(\"Dual Microphone Acoustic Time-Domain Capture (20.48 ms Window @ 50 kSPS)\", fontsize=11, fontweight=\"bold\")\n",
     "ax1.set_ylabel(\"Voltage (V)\", fontsize=10)\n",
     "ax1.set_ylim(0, 3.3)\n",
     "ax1.grid(True, linestyle=\"--\", alpha=0.5)\n",
