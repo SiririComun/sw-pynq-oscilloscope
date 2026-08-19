@@ -5,13 +5,14 @@ Current Branch: feat/pl-audio-decimation
 Branch Tracking Status:
   feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-* feat/pl-audio-decimation  21bb110 [origin/feat/pl-audio-decimation] fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen
+* feat/pl-audio-decimation  c53c576 [origin/feat/pl-audio-decimation] fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range
   feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   feat/runtime-config-audio 0536773 [origin/feat/runtime-config-audio] chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary
   main                      82e5005 [origin/main] merge: feat(dual-xadc) release v1.3.0 with simultaneous dual-channel oscilloscope and 4-tab dashboard
 
 Git Commit Graph & History:
-* 21bb110  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
+* c53c576  (HEAD -> feat/pl-audio-decimation, origin/feat/pl-audio-decimation) - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
+* 21bb110  - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
 * 1ce59ff  - 2026-08-19 : fix(overlay): implement non-blocking safe capture_stereo with XADC sequencer auto-init (SiririComun)
 * 660ad7d  - 2026-08-19 : fix(ad3): correct device enumeration to enable AD3 wavegen on v1.4.0 (SiririComun)
 * 64fe422  - 2026-08-18 : fix(ad3): correct pydwf device enumeration in has_device method (SiririComun)
@@ -25,8 +26,7 @@ Git Commit Graph & History:
 | * e85a00c  (origin/feat/dual-xadc, feat/dual-xadc) - 2026-08-16 : chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook (SiririComun)
 | * 711dcfa  - 2026-08-16 : docs(readme): ensure PyPI absolute asset compatibility and document v1.3.0 dual-channel UI (SiririComun)
 | * 5c619cc  - 2026-08-16 : fix(dashboard): correct trigger source polarity, dynamic threshold line placement, and UI symmetry (SiririComun)
-| * 05efd58  - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)
-| * 60a756a  - 2026-08-16 : feat(dashboard): add 4-tab dual-channel instrument and selectable hardware trigger source (SiririComun)```
+| * 05efd58  - 2026-08-16 : feat(dashboard): add selectable hardware trigger source channel and dynamic auto-range (SiririComun)```
 
 Files structure: 
 
@@ -58,6 +58,7 @@ Files structure:
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
 │   ├── 04_fft_spectrum_analyzer.ipynb
+│   ├── 05_audio_dashboard.ipynb
 │   └── 06_audio_fft_microphone_test.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
@@ -75,7 +76,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 35 files
+8 directories, 36 files
 ```
 
 pypi.yml:
@@ -2280,6 +2281,101 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
+05_audio_dashboard.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 5: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
+    "\n",
+    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.4.0`).\n",
+    "\n",
+    "Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), this dashboard runs completely independently without requiring an Analog Discovery 3 (AD3).\n",
+    "\n",
+    "### 🌟 Audio Instrument Features:\n",
+    "- 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.\n",
+    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
+    "- 🚨 **Real-Time VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\\,\\text{V}$ or $V > 3.10\\,\\text{V}$).\n",
+    "- 🎯 **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\\pm 0.5\\,\\text{Hz}$ accuracy.\n",
+    "- 🪟 **Hann-Windowed Spectral Analysis:** Suppresses spectral leakage by $>32\\,\\text{dB}$ for clean harmonic overtone visualization.\n",
+    "- 🔀 **4-Tab Synchronized Display:** Dual Scope, Dual Audio FFT ($0 - 25\\,\\text{kHz}$), and dedicated Channel Views."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. System Setup & Permission Check\n",
+    "Grant bus permissions to ensure clean communication with the hardware overlay."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
+    "\n",
+    "# Ensure bus permissions\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Launch Dedicated Audio & Microphone Dashboard\n",
+    "Instantiate `OscilloscopeOverlay` and call `.audio_dashboard()` to launch the live dark-mode instrument."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# 1. Initialize Dual-Channel Decimated Audio Overlay (v1.4.0)\n",
+    "ol = OscilloscopeOverlay()\n",
+    "\n",
+    "# 2. Render and launch dedicated Audio Dashboard\n",
+    "app = ol.audio_dashboard()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Hardware Shutdown & Cleanup\n",
+    "Click **Stop** on the dashboard or execute this cell to cleanly halt acquisition and release hardware CMA memory buffers."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "app.stop()\n",
+    "ol.close()\n",
+    "print(\"🔒 Audio Dashboard stopped and memory released.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
 06_audio_fft_microphone_test.ipynb:
 
 ```json
@@ -2587,7 +2683,7 @@ TARGET_FILES=(
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
-    "notebooks/05_dual_channel_test.ipynb:json"
+    "notebooks/05_audio_dashboard.ipynb:json"
     "notebooks/06_audio_fft_microphone_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
