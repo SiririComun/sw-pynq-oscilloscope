@@ -1,35 +1,36 @@
 """
-pynq_oscilloscope.fft_dma: High-level driver for the PL-accelerated 2048-point FFT & CORDIC Magnitude Engine.
-Features sub-bin quadratic interpolation for sub-Hertz audio frequency precision.
+pynq_oscilloscope.fft_dma: Advanced FFT & Spectral Analysis Engine for PYNQ-Z2.
+Features multi-windowing (Hann, Hamming, Blackman, Flat-Top), sub-bin quadratic
+interpolation, and hardware CORDIC DMA magnitude stream processing.
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 import numpy as np
 from pynq import allocate
 
 
 class StreamingFFT:
     """
-    High-level driver for the PL-accelerated 2048-point FFT & CORDIC Magnitude Engine.
-    
-    Streams pre-calculated magnitude bins from the FPGA via AXI DMA (axi_dma_1),
-    formats the single-sided audio spectrum (0 Hz to 25 kHz @ 50 kSPS), and provides logarithmic
-    (dBV / dBFS) and linear power spectrum transformations.
+    High-level driver for FFT analysis, windowing, and CORDIC magnitude streaming.
+    Supports dynamic sampling rates, window functions, and sub-Hertz peak tracking.
     """
+
+    WINDOWS = ["hann", "hamming", "blackman", "flattop", "rectangular"]
 
     def __init__(self, overlay, fft_points: int = 2048, sample_rate_hz: float = 50_000.0):
         """
-        Initialize the FFT DMA controller from the loaded PYNQ overlay.
+        Initialize the FFT controller.
         
         :param overlay: Loaded pynq.Overlay or OscilloscopeOverlay instance.
-        :param fft_points: FFT transform length matching the PL xfft core (default: 2048).
-        :param sample_rate_hz: Decimated audio sampling frequency (default: 50.0 kSPS).
+        :param fft_points: Transform length N (default: 2048).
+        :param sample_rate_hz: Sampling frequency fs (default: 50.0 kSPS).
         """
-        self.fft_points = fft_points
+        self.fft_points = int(fft_points)
         self.sample_rate_hz = float(sample_rate_hz)
-        self.num_bins = fft_points // 2  # Single-sided spectrum bins (1024)
+        self.num_bins = self.fft_points // 2  # 1024 single-sided bins
+        self.active_window = "hann"
         
-        # Frequency axis grid (0 to 25 kHz for 50 kSPS @ 2048 pts, delta_f = 24.414 Hz)
+        # Grid parameters
         self.delta_f = self.sample_rate_hz / self.fft_points
         self.freq_axis = np.arange(self.num_bins) * self.delta_f
 
@@ -52,35 +53,117 @@ class StreamingFFT:
                 else:
                     raise RuntimeError("No AXI DMA block found for FFT stream (axi_dma_1).")
 
-        # Allocate contiguous CMA buffer ONCE for real-time streaming
+        # Allocate contiguous CMA buffer
         self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
+        self._window_cache: Dict[str, np.ndarray] = {}
+
+    # =========================================================================
+    # 1. Windowing Engine
+    # =========================================================================
+
+    def set_window(self, window_type: str = "hann"):
+        """
+        Sets the active window function.
+        
+        :param window_type: 'hann', 'hamming', 'blackman', 'flattop', or 'rectangular'.
+        """
+        win_clean = window_type.lower().strip()
+        if win_clean not in self.WINDOWS:
+            raise ValueError(f"Invalid window '{window_type}'. Choose from: {self.WINDOWS}")
+        self.active_window = win_clean
+
+    def get_window_vector(self, length: int, window_type: Optional[str] = None) -> np.ndarray:
+        """Generates or retrieves a cached window vector of given length."""
+        win_name = (window_type or self.active_window).lower().strip()
+        cache_key = f"{win_name}_{length}"
+        
+        if cache_key in self._window_cache:
+            return self._window_cache[cache_key]
+
+        n = np.arange(length)
+        if win_name == "hann":
+            w = 0.5 - 0.5 * np.cos(2.0 * np.pi * n / (length - 1))
+        elif win_name == "hamming":
+            w = 0.54 - 0.46 * np.cos(2.0 * np.pi * n / (length - 1))
+        elif win_name == "blackman":
+            w = (0.42 - 0.5 * np.cos(2.0 * np.pi * n / (length - 1)) +
+                 0.08 * np.cos(4.0 * np.pi * n / (length - 1)))
+        elif win_name == "flattop":
+            w = (0.21557895 - 0.41663158 * np.cos(2.0 * np.pi * n / (length - 1)) +
+                 0.277263158 * np.cos(4.0 * np.pi * n / (length - 1)) -
+                 0.083578947 * np.cos(6.0 * np.pi * n / (length - 1)) +
+                 0.006947368 * np.cos(8.0 * np.pi * n / (length - 1)))
+        else:  # rectangular
+            w = np.ones(length, dtype=np.float64)
+
+        self._window_cache[cache_key] = w
+        return w
+
+    # =========================================================================
+    # 2. Software Spectral Computation from Time Samples
+    # =========================================================================
+
+    def compute_spectrum(
+        self,
+        time_samples: np.ndarray,
+        unit: str = "dBV",
+        window_type: Optional[str] = None,
+        remove_dc: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Computes a windowed, zero-centered, power-normalized RFFT spectrum.
+        
+        :param time_samples: 1D numpy array of physical voltages.
+        :param unit: 'dBV', 'dBFS', or 'Linear' (mV).
+        :param window_type: Window name (defaults to active_window).
+        :param remove_dc: Subtract mean baseline before FFT (default: True).
+        :return: (freq_axis_hz, magnitude_array).
+        """
+        x = np.array(time_samples, dtype=np.float64)
+        if remove_dc:
+            x = x - np.mean(x)
+            
+        n = len(x)
+        w = self.get_window_vector(n, window_type=window_type)
+        windowed_x = x * w
+
+        # Compute single-sided RFFT with coherent gain compensation
+        coherent_gain = np.sum(w) / n
+        fft_complex = np.fft.rfft(windowed_x)
+        freqs = np.fft.rfftfreq(n, d=1.0 / self.sample_rate_hz)
+        
+        # Peak linear amplitude normalization
+        linear_volts = (np.abs(fft_complex) / (n / 2.0)) / max(coherent_gain, 1e-4)
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(linear_volts / 1.65, 1e-6))
+        elif unit_clean == "LINEAR":
+            mags = linear_volts * 1000.0  # Millivolts
+        else:
+            raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
+
+        return freqs, mags
+
+    # =========================================================================
+    # 3. Hardware Spectrum DMA Streaming
+    # =========================================================================
 
     def capture_raw(self) -> np.ndarray:
-        """
-        Triggers a high-speed S2MM DMA transfer of 2048 magnitude points from PL.
-        Blocks until the frame completes (asserted by CORDIC/FFT TLAST).
-        """
+        """Triggers hardware S2MM DMA transfer of 2048 magnitude points from PL."""
         self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
         return np.array(self._buffer, copy=True)
 
     def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Captures a hardware FFT frame and returns (frequencies, magnitudes).
-        
-        :param unit: Output unit: 'dBV', 'dBFS', or 'Linear' (Volts Peak).
-        :param ref_voltage: Full-scale reference voltage of ADC (default: 3.3V).
-        :return: Tuple of (freq_axis_hz, magnitude_array) of length 1024.
-        """
+        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
         raw_full = self.capture_raw()
-        
-        # 1. Single-sided spectrum (0 to Nyquist)
         raw_half = raw_full[:self.num_bins].astype(np.float64)
 
-        # 2. Scale raw 16-bit CORDIC magnitude to equivalent Volts
         linear_volts = (raw_half / 2048.0) * (ref_voltage / 4095.0)
 
-        # 3. Convert to requested unit
         unit_clean = unit.strip().upper()
         if unit_clean == "DBV":
             safe_linear = np.maximum(linear_volts, 1e-6)
@@ -95,6 +178,10 @@ class StreamingFFT:
 
         return self.freq_axis, magnitudes
 
+    # =========================================================================
+    # 4. Sub-Bin Quadratic Peak Interpolation
+    # =========================================================================
+
     @staticmethod
     def get_peak_frequency(
         freqs: np.ndarray,
@@ -103,14 +190,8 @@ class StreamingFFT:
         interpolate: bool = True
     ) -> Tuple[float, float]:
         """
-        Finds the fundamental/dominant frequency and peak magnitude using
-        sub-bin quadratic (parabolic) interpolation for sub-Hertz accuracy.
-        
-        :param freqs: Frequency axis array (Hz).
-        :param mags: Magnitude spectrum array (dBV or Linear).
-        :param min_freq_hz: Minimum frequency threshold to ignore DC offset (default: 20 Hz).
-        :param interpolate: Enable quadratic sub-bin interpolation (default: True).
-        :return: (exact_peak_frequency_hz, peak_magnitude)
+        Finds the dominant pitch / fundamental frequency with sub-Hertz accuracy
+        using three-point parabolic interpolation.
         """
         valid_indices = np.where(freqs >= min_freq_hz)[0]
         if len(valid_indices) == 0:
@@ -118,11 +199,9 @@ class StreamingFFT:
         else:
             k = int(valid_indices[np.argmax(mags[valid_indices])])
 
-        # Boundary check for interpolation
         if not interpolate or k <= 0 or k >= len(mags) - 1:
             return float(freqs[k]), float(mags[k])
 
-        # Three-point parabolic interpolation: [alpha, beta, gamma]
         alpha = float(mags[k - 1])
         beta  = float(mags[k])
         gamma = float(mags[k + 1])
@@ -132,7 +211,7 @@ class StreamingFFT:
             return float(freqs[k]), float(beta)
 
         delta = 0.5 * (alpha - gamma) / denom
-        delta = max(-0.5, min(0.5, delta))  # Clamp within single bin width
+        delta = max(-0.5, min(0.5, delta))
 
         delta_f = float(freqs[1] - freqs[0]) if len(freqs) > 1 else 24.414
         interp_freq = float(freqs[k] + delta * delta_f)
@@ -141,7 +220,7 @@ class StreamingFFT:
         return interp_freq, interp_mag
 
     def close(self):
-        """Free the allocated contiguous memory (CMA) buffer."""
+        """Free allocated CMA buffer."""
         if hasattr(self, "_buffer") and self._buffer is not None:
             try:
                 self._buffer.close()
