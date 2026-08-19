@@ -50,9 +50,10 @@ class AD3SignalGenerator:
         }
 
     def has_device(self) -> bool:
-        """Checks if a Digilent device is physically enumerated on the USB bus."""
+        """Checks if an AD3 / Digilent device is physically connected to the USB bus."""
         try:
-            return self.dwf.enum.count() > 0
+            self.dwf.deviceEnum.enumerateDevices()
+            return self.dwf.deviceEnum.count() > 0
         except Exception:
             return False
 
