@@ -1,6 +1,6 @@
 """
 pynq_oscilloscope.ad3_wavegen: Non-blocking multi-threaded wrapper for Digilent AD3 Wavegen.
-Features auto-detection to gracefully handle environments where AD3 is not physically connected.
+Features robust device enumeration to enable AD3 signal generation and prevent crashes when disconnected.
 """
 
 import time
@@ -43,7 +43,7 @@ class AD3SignalGenerator:
         # Channel 2 Parameters (W2 -> Pin A1)
         self.ch2 = {
             "shape": "Square",
-            "frequency": 5000.0,
+            "frequency": 2500.0,
             "amplitude": 1.0,
             "offset": 1.65,
             "enabled": True
@@ -123,7 +123,7 @@ class AD3SignalGenerator:
         amplitude: float = 1.0,
         offset: float = 1.65,
         ch2_shape: str = "Square",
-        ch2_frequency: float = 5000.0,
+        ch2_frequency: float = 2500.0,
         ch2_amplitude: float = 1.0,
         ch2_offset: float = 1.65,
         enable_ch2: bool = True
