@@ -1,4 +1,9 @@
-from typing import Tuple
+"""
+pynq_oscilloscope.xadc_dma: High-level driver for XADC AXI-Stream & AXI DMA data acquisition.
+Supports Single-Channel (A0) and Simultaneous Dual-Channel (A0 & A1) streaming with persistent buffer pooling.
+"""
+
+from typing import Tuple, Optional
 import numpy as np
 from pynq import allocate
 
@@ -18,15 +23,25 @@ class StreamingXADC:
                 raise RuntimeError("No AXI DMA block found in the loaded hardware overlay.")
             self.dma = getattr(overlay, dma_blocks[0])
 
-        self.packet_size = default_packet_size
-        self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
+        self.packet_size = int(default_packet_size)
+        self._buffer: Optional[object] = allocate(shape=(self.packet_size,), dtype="u2")
+
+    def resize_buffer(self, new_packet_size: int):
+        """Safely re-allocates the persistent CMA buffer if packet size changes."""
+        if new_packet_size != self.packet_size or self._buffer is None:
+            self.close()
+            self.packet_size = int(new_packet_size)
+            self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
     def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Captures simultaneous interleaved stereo samples from XADC via DMA.
+        Captures simultaneous interleaved stereo samples from XADC via DMA into the persistent buffer.
         
         :return: (voltages_ch1_a0, voltages_ch2_a1) arrays of length packet_size / 2.
         """
+        if self._buffer is None:
+            self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
+
         # 1. Trigger DMA transfer
         self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
@@ -41,7 +56,7 @@ class StreamingXADC:
         voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
         voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
         
-        if crop_startup_samples > 0:
+        if crop_startup_samples > 0 and len(voltages_ch1) > (2 * crop_startup_samples):
             voltages_ch1 = voltages_ch1[crop_startup_samples:]
             voltages_ch2 = voltages_ch2[crop_startup_samples:]
             
