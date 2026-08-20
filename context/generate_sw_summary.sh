@@ -66,11 +66,13 @@ TARGET_FILES=(
     "pynq_oscilloscope/hw_trigger.py:python"
     "pynq_oscilloscope/overlay.py:python"
     "pynq_oscilloscope/analytics.py:python"
+    "pynq_oscilloscope/analytic_dashboard.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_fft_spectrum_analyzer.ipynb:json"
     "notebooks/05_audio_dashboard.ipynb:json"
+    "notebooks/06_acoustic_analytic_curves.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
