@@ -16,6 +16,7 @@ from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
+from pynq_oscilloscope.analytic_dashboard import AcousticAnalyticDashboard
 
 
 class OscilloscopeOverlay(Overlay):
@@ -248,6 +249,16 @@ class OscilloscopeOverlay(Overlay):
             overlay=self,
             packet_size=self.packet_size,
             fft_points=self.fft_points
+        )
+        dash.display()
+        return dash
+
+    def analytic_dashboard(self):
+        """Launches the dedicated Real-Time Acoustic Analytics & Spectrogram Dashboard."""
+        dash = AcousticAnalyticDashboard(
+            overlay=self,
+            packet_size=self.packet_size,
+            fs_per_ch=self.fs_per_ch
         )
         dash.display()
         return dash
