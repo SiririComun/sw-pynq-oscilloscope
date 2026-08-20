@@ -11,6 +11,7 @@ from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
+from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.notebooks import copy_notebooks
 
 __version__ = "1.5.0-rc1"
@@ -25,5 +26,6 @@ __all__ = [
     "AD3SignalGenerator",
     "OscilloscopeDashboard",
     "AudioDashboard",
+    "AcousticAnalytics",
     "copy_notebooks",
 ]
