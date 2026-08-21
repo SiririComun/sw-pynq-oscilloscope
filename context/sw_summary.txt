@@ -3,7 +3,7 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-* feat/acoustic-analytics-curves 188b932 feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine
+* feat/acoustic-analytics-curves 3a8bd61 [origin/feat/acoustic-analytics-curves] test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -12,7 +12,9 @@ Branch Tracking Status:
   main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-* 188b932  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-20 : feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine (SiririComun)
+* 3a8bd61  (HEAD -> feat/acoustic-analytics-curves, origin/feat/acoustic-analytics-curves) - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
+* 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)
+* 188b932  - 2026-08-20 : feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine (SiririComun)
 * d1f3f92  - 2026-08-20 : refactor(sw): expose fft channel selector in hw_trigger and unify ad3 wavegen binding (SiririComun)
 * b22c5a9  - 2026-08-20 : perf(dma): implement persistent cma buffer pooling and simultaneous sampling activation (SiririComun)
 * 689dd1b  - 2026-08-20 : chore(hw): pin hardware overlay dependency to v1.5.0-rc1 (SiririComun)
@@ -25,9 +27,7 @@ Git Commit Graph & History:
 | * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
 | * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)
 | * e5b6a9a  - 2026-08-18 : feat(overlay): implement unified multi-regime profile switcher and audio playback (SiririComun)
-| * afa7875  - 2026-08-18 : feat(fft): implement multi-windowing engine (Hann, Hamming, Blackman, Flat-Top) (SiririComun)
-| * 701aadb  - 2026-08-18 : feat(trigger): add runtime decimation, FFT transform length, and packet size AXI-Lite controls (SiririComun)
-* | 96e8763  (tag: v1.4.0, origin/feat/pl-audio-decimation, feat/pl-audio-decimation) - 2026-08-19 : chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook (SiririComun)```
+| * afa7875  - 2026-08-18 : feat(fft): implement multi-windowing engine (Hann, Hamming, Blackman, Flat-Top) (SiririComun)```
 
 Files structure: 
 
@@ -465,9 +465,9 @@ class OscilloscopeDashboard:
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
 
-        # Initialize XADC simultaneous sequence
+        # Initialize XADC continuous sequence
         if hasattr(self.overlay, "xadc_wiz_0"):
-            self.overlay.xadc_wiz_0.mmio.write(0x304, 0xC000)
+            self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
 
@@ -1877,9 +1877,9 @@ class OscilloscopeOverlay(Overlay):
         Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
         using the persistent pre-allocated CMA buffer pool and simultaneous XADC conversion.
         """
-        # 1. Initialize XADC into True Continuous Simultaneous Sampling Mode
+        # 1. Initialize XADC into Continuous Sequence Mode on Vaux1 and Vaux9
         if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0xC000)  # DRP 0x41: SEQ=1100 -> Simultaneous Continuous Dual-Sampling
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41: Continuous Sequence Mode
             self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48: Disable internal channels
             self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49: Enable Vaux1 (A0) & Vaux9 (A1)
 
@@ -2280,7 +2280,6 @@ import ipywidgets as widgets
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pynq import allocate
-
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
@@ -2424,7 +2423,7 @@ class AcousticAnalyticDashboard:
 
         # Initialize XADC into Simultaneous Sampling Mode (0xC000)
         if hasattr(self.overlay, "xadc_wiz_0"):
-            self.overlay.xadc_wiz_0.mmio.write(0x304, 0xC000)
+            self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
 
@@ -3216,8 +3215,8 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
     "import numpy as np\n",
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay, AcousticAnalytics\n",
     "\n",
     "check_usb_permissions()"
    ]
@@ -3276,8 +3275,8 @@ class AcousticAnalyticDashboard:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 4. Launch the \"Final Boss\" Real-Time Diagnostic Dashboard\n",
-    "Launch the interactive 3-tab Acoustic Analytics dashboard."
+    "## 4. Launch the Real-Time Diagnostic Dashboard\n",
+    "Launch the interactive Acoustic Analytics dashboard."
    ]
   },
   {

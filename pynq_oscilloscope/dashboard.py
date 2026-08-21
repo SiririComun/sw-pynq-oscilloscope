@@ -247,9 +247,9 @@ class OscilloscopeDashboard:
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
 
-        # Initialize XADC simultaneous sequence
+        # Initialize XADC continuous sequence
         if hasattr(self.overlay, "xadc_wiz_0"):
-            self.overlay.xadc_wiz_0.mmio.write(0x304, 0xC000)
+            self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
 

@@ -152,9 +152,9 @@ class OscilloscopeOverlay(Overlay):
         Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
         using the persistent pre-allocated CMA buffer pool and simultaneous XADC conversion.
         """
-        # 1. Initialize XADC into True Continuous Simultaneous Sampling Mode
+        # 1. Initialize XADC into Continuous Sequence Mode on Vaux1 and Vaux9
         if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0xC000)  # DRP 0x41: SEQ=1100 -> Simultaneous Continuous Dual-Sampling
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41: Continuous Sequence Mode
             self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48: Disable internal channels
             self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49: Enable Vaux1 (A0) & Vaux9 (A1)
 

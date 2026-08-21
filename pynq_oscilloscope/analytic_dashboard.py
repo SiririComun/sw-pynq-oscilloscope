@@ -12,7 +12,6 @@ import ipywidgets as widgets
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pynq import allocate
-
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
@@ -156,7 +155,7 @@ class AcousticAnalyticDashboard:
 
         # Initialize XADC into Simultaneous Sampling Mode (0xC000)
         if hasattr(self.overlay, "xadc_wiz_0"):
-            self.overlay.xadc_wiz_0.mmio.write(0x304, 0xC000)
+            self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
 
