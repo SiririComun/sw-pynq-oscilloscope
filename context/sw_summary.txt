@@ -3,7 +3,7 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-* feat/acoustic-analytics-curves d7ce05b [origin/feat/acoustic-analytics-curves: ahead 1] fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports
+* feat/acoustic-analytics-curves 20db235 [origin/feat/acoustic-analytics-curves] feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -12,8 +12,9 @@ Branch Tracking Status:
   main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-* d7ce05b  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
-* 3a8bd61  (origin/feat/acoustic-analytics-curves) - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
+* 20db235  (HEAD -> feat/acoustic-analytics-curves, origin/feat/acoustic-analytics-curves) - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
+* d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
+* 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
 * 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)
 * 188b932  - 2026-08-20 : feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine (SiririComun)
 * d1f3f92  - 2026-08-20 : refactor(sw): expose fft channel selector in hw_trigger and unify ad3 wavegen binding (SiririComun)
@@ -26,8 +27,7 @@ Git Commit Graph & History:
 | * a7feb27  - 2026-08-19 : docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite (SiririComun)
 | * 209d684  - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
 | * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
-| * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)
-| * e5b6a9a  - 2026-08-18 : feat(overlay): implement unified multi-regime profile switcher and audio playback (SiririComun)```
+| * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)```
 
 Files structure: 
 
@@ -1282,8 +1282,8 @@ class AD3SignalGenerator:
     def has_device(self) -> bool:
         """Checks if an AD3 / Digilent device is physically connected to the USB bus."""
         try:
-            self.dwf.deviceEnum.enumerateDevices()
-            return self.dwf.deviceEnum.count() > 0
+            num_dev = self.dwf.deviceEnum.enumerateDevices()
+            return num_dev > 0
         except Exception:
             return False
 
