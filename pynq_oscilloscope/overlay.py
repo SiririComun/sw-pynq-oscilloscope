@@ -197,9 +197,69 @@ class OscilloscopeOverlay(Overlay):
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
 
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware single-channel FFT spectrum from the active channel selected in trigger."""
-        return self.fft.capture_spectrum(unit=unit)
+    def capture_fft(self, unit: str = "dBV", timeout: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures hardware single-channel FFT spectrum from the active channel selected in trigger
+        using non-blocking DMA synchronization.
+        """
+        # 1. Initialize XADC sequencer (0x2000)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # 2. Match FFT transform length to demuxed channel frame size (N = packet_size / 2)
+        fft_pts = self.packet_size // 2
+        self.trigger.set_fft_config(n_points=fft_pts, forward=True)
+
+        # 3. Reset and start both DMA channels
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        self.axi_dma_1.mmio.write(0x30, 0x04)
+        time.sleep(0.002)
+        self.axi_dma_0.recvchannel.start()
+        self.axi_dma_1.recvchannel.start()
+
+        # 4. Queue receive buffers
+        buf_fft = allocate(shape=(fft_pts,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
+        self.axi_dma_1.recvchannel.transfer(buf_fft)
+
+        # 5. Arm Hardware Trigger
+        self.trigger.arm()
+
+        # 6. Non-blocking poll with timeout
+        start = time.time()
+        ok = False
+        while time.time() - start < timeout:
+            if self.axi_dma_1.recvchannel.idle:
+                ok = True
+                break
+            time.sleep(0.005)
+
+        if not ok:
+            buf_fft.close()
+            raise TimeoutError(f"PL FFT capture timed out after {timeout} seconds.")
+
+        raw_fft = np.array(buf_fft, copy=True)
+        buf_fft.close()
+
+        # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
+        num_bins = fft_pts // 2
+        raw_half = raw_fft[:num_bins].astype(np.float64)
+        linear_volts = (raw_half / float(fft_pts)) * (3.3 / 4095.0)
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half / 65535.0, 1e-6))
+        else:
+            mags = linear_volts * 1000.0
+
+        delta_f = self.fs_per_ch / float(fft_pts)
+        freqs = np.arange(num_bins) * delta_f
+
+        return freqs, mags
 
     # =========================================================================
     # 3. Jupyter Audio Playback

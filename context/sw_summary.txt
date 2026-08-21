@@ -3,7 +3,7 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-* feat/acoustic-analytics-curves 20db235 [origin/feat/acoustic-analytics-curves] feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes
+* feat/acoustic-analytics-curves 8c4dbbc [origin/feat/acoustic-analytics-curves] fix(wavegen): correct device enumeration in AD3SignalGenerator has_device
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -12,7 +12,8 @@ Branch Tracking Status:
   main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-* 20db235  (HEAD -> feat/acoustic-analytics-curves, origin/feat/acoustic-analytics-curves) - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
+* 8c4dbbc  (HEAD -> feat/acoustic-analytics-curves, origin/feat/acoustic-analytics-curves) - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
+* 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
 * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
 * 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
 * 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)
@@ -26,8 +27,7 @@ Git Commit Graph & History:
 | * 09ffe2f  (origin/feat/runtime-config-audio, feat/runtime-config-audio) - 2026-08-19 : chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks (SiririComun)
 | * a7feb27  - 2026-08-19 : docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite (SiririComun)
 | * 209d684  - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
-| * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
-| * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)```
+| * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)```
 
 Files structure: 
 
@@ -1922,9 +1922,69 @@ class OscilloscopeOverlay(Overlay):
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
 
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware single-channel FFT spectrum from the active channel selected in trigger."""
-        return self.fft.capture_spectrum(unit=unit)
+    def capture_fft(self, unit: str = "dBV", timeout: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures hardware single-channel FFT spectrum from the active channel selected in trigger
+        using non-blocking DMA synchronization.
+        """
+        # 1. Initialize XADC sequencer (0x2000)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # 2. Match FFT transform length to demuxed channel frame size (N = packet_size / 2)
+        fft_pts = self.packet_size // 2
+        self.trigger.set_fft_config(n_points=fft_pts, forward=True)
+
+        # 3. Reset and start both DMA channels
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        self.axi_dma_1.mmio.write(0x30, 0x04)
+        time.sleep(0.002)
+        self.axi_dma_0.recvchannel.start()
+        self.axi_dma_1.recvchannel.start()
+
+        # 4. Queue receive buffers
+        buf_fft = allocate(shape=(fft_pts,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
+        self.axi_dma_1.recvchannel.transfer(buf_fft)
+
+        # 5. Arm Hardware Trigger
+        self.trigger.arm()
+
+        # 6. Non-blocking poll with timeout
+        start = time.time()
+        ok = False
+        while time.time() - start < timeout:
+            if self.axi_dma_1.recvchannel.idle:
+                ok = True
+                break
+            time.sleep(0.005)
+
+        if not ok:
+            buf_fft.close()
+            raise TimeoutError(f"PL FFT capture timed out after {timeout} seconds.")
+
+        raw_fft = np.array(buf_fft, copy=True)
+        buf_fft.close()
+
+        # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
+        num_bins = fft_pts // 2
+        raw_half = raw_fft[:num_bins].astype(np.float64)
+        linear_volts = (raw_half / float(fft_pts)) * (3.3 / 4095.0)
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half / 65535.0, 1e-6))
+        else:
+            mags = linear_volts * 1000.0
+
+        delta_f = self.fs_per_ch / float(fft_pts)
+        freqs = np.arange(num_bins) * delta_f
+
+        return freqs, mags
 
     # =========================================================================
     # 3. Jupyter Audio Playback
@@ -2967,7 +3027,7 @@ class AcousticAnalyticDashboard:
    "source": [
     "# Notebook 4: Real-Time PL-Accelerated FFT & Spectrum Analyzer Guide\n",
     "\n",
-    "This notebook demonstrates how to capture and visualize frequency spectra computed entirely within the **Programmable Logic (PL)** using the **Xilinx LogiCORE FFT (2048-pt)** and **CORDIC Magnitude Engine** on the PYNQ-Z2."
+    "This notebook demonstrates how to capture and visualize frequency spectra computed entirely within the **Programmable Logic (PL)** using the **Xilinx LogiCORE FFT** and **CORDIC Magnitude Engine** on the PYNQ-Z2 ($0 - 250\\,\\text{kHz}$)."
    ]
   },
   {
@@ -2983,12 +3043,10 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
-    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay, StreamingFFT\n",
     "import matplotlib.pyplot as plt\n",
     "import time\n",
     "\n",
-    "# Grant permissions for /dev/bus/usb\n",
     "check_usb_permissions()"
    ]
   },
@@ -2996,8 +3054,8 @@ class AcousticAnalyticDashboard:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 2. Load the Hardware Overlay\n",
-    "Instantiate `OscilloscopeOverlay()`. It automatically loads the dual-DMA bitstream containing both Time-Domain and Frequency-Domain hardware engines."
+    "## 2. Load Hardware Overlay in Wideband Scope Mode (500 kSPS)\n",
+    "Set profile to `oscilloscope` (M=1 bypass, $0 - 250\\,\\text{kHz}$ bandwidth)."
    ]
   },
   {
@@ -3007,9 +3065,9 @@ class AcousticAnalyticDashboard:
    "outputs": [],
    "source": [
     "ol = OscilloscopeOverlay()\n",
+    "ol.set_profile(\"oscilloscope\")\n",
     "print(\"✅ Oscilloscope & Spectrum Analyzer Overlay loaded successfully!\")\n",
-    "print(f\"  • Time Packet Size : {ol.packet_size} samples @ 1 MSPS\")\n",
-    "print(f\"  • PL FFT Bins      : {ol.fft_points // 2} unique frequency bins (0 Hz to 500 kHz)\")"
+    "print(ol.get_profile_info())"
    ]
   },
   {
@@ -3017,7 +3075,7 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "source": [
     "## 3. Generate a Test Tone with Analog Discovery 3\n",
-    "Start generating a **25 kHz Sine wave** (1.5V Amplitude, 1.65V DC Offset) on Wavegen Channel 1 (W1 $\\rightarrow$ A0)."
+    "Generate a **25 kHz Sine wave** (1.5V Amplitude, 1.65V DC Offset) on Wavegen Channel 1 (W1 $\\rightarrow$ A0)."
    ]
   },
   {
@@ -3026,7 +3084,6 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Start 25 kHz Sine wave\n",
     "ol.wavegen.start(shape=\"Sine\", frequency=25000.0, amplitude=1.5, offset=1.65)\n",
     "time.sleep(1.0)\n",
     "print(\"✅ AD3 active @ 25 kHz (1.5V amplitude, 1.65V offset).\")"
@@ -3046,10 +3103,8 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Capture single-sided spectrum (0 Hz to 500 kHz)\n",
     "freqs, mags = ol.capture_fft(unit=\"dBV\")\n",
     "\n",
-    "# Detect peak frequency\n",
     "peak_freq, peak_mag = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=1000.0)\n",
     "print(f\"🎯 Dominant Peak: {peak_freq/1e3:.2f} kHz @ {peak_mag:.1f} dBV\")"
    ]
@@ -3059,7 +3114,7 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "source": [
     "## 5. Spectrum Visualization with Matplotlib\n",
-    "Plot the frequency spectrum showing the sharp fundamental peak."
+    "Plot the frequency spectrum showing the sharp fundamental peak at 25 kHz."
    ]
   },
   {
@@ -3072,10 +3127,10 @@ class AcousticAnalyticDashboard:
     "plt.plot(freqs / 1e3, mags, color=\"#FF007F\", linewidth=1.6, label=f\"PL Hardware FFT (Peak: {peak_freq/1e3:.1f} kHz)\")\n",
     "plt.scatter([peak_freq / 1e3], [peak_mag], color=\"#00FFCC\", s=60, zorder=5, label=f\"Fundamental: {peak_freq/1e3:.1f} kHz ({peak_mag:.1f} dBV)\")\n",
     "\n",
-    "plt.title(\"Hardware-Accelerated 1 MSPS FFT Spectrum (0 to 100 kHz)\", fontsize=12, fontweight=\"bold\")\n",
+    "plt.title(\"Hardware-Accelerated 500 kSPS FFT Spectrum (0 to 250 kHz)\", fontsize=12, fontweight=\"bold\")\n",
     "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
     "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 100)  # Zoom to 0 - 100 kHz\n",
+    "plt.xlim(0, 150)\n",
     "plt.ylim(-100, 0)\n",
     "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
     "plt.legend(loc=\"upper right\")\n",
@@ -3089,7 +3144,7 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "source": [
     "## 6. Harmonic Distortion Test (Square Wave Fourier Harmonics)\n",
-    "Update AD3 to a **10 kHz Square wave** and observe the fundamental frequency ($f_0$) along with odd harmonics ($3f_0 = 30\\,\\text{kHz}$, $5f_0 = 50\\,\\text{kHz}$, $7f_0 = 70\\,\\text{kHz}$, $9f_0 = 90\\,\\text{kHz}$)."
+    "Update AD3 to a **10 kHz Square wave** and observe the fundamental ($10\\,\\text{kHz}$) and odd harmonics ($30, 50, 70, 90\\,\\text{kHz}$)."
    ]
   },
   {
@@ -3098,7 +3153,6 @@ class AcousticAnalyticDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Switch to 10 kHz Square wave\n",
     "ol.wavegen.update_parameters(shape=\"Square\", frequency=10000.0, amplitude=1.2)\n",
     "time.sleep(0.5)\n",
     "\n",
@@ -3110,7 +3164,7 @@ class AcousticAnalyticDashboard:
     "plt.title(\"Square Wave Odd Harmonics: 10k, 30k, 50k, 70k, 90k Hz\", fontsize=12, fontweight=\"bold\")\n",
     "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
     "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 100)\n",
+    "plt.xlim(0, 150)\n",
     "plt.ylim(-110, 0)\n",
     "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
     "plt.legend(loc=\"upper right\")\n",
