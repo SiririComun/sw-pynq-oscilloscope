@@ -24,7 +24,7 @@ class HardwareTrigger:
     REG_TIMEOUT     = 0x0C
     REG_HYSTERESIS  = 0x10
     REG_DECIMATION  = 0x14  # [1:0] 00=M=1, 01=M=10, 10=M=20, 11=M=50
-    REG_FFT_CONFIG  = 0x18  # [15:0] (NFFT << 8) | FWD_INV
+    REG_FFT_CONFIG  = 0x18  # [15:0] (FWD_INV << 8) | NFFT (PG109 Format)
     REG_PACKET_SIZE = 0x1C  # [15:0] Samples per DMA frame
 
     # Bit masks for REG_CONTROL (0x00)
@@ -229,6 +229,9 @@ class HardwareTrigger:
     def set_fft_config(self, n_points: int = 2048, forward: bool = True):
         """
         Dynamically configures the Xilinx LogiCORE FFT core via the 16-bit s_axis_config bus.
+        Following PG109 format:
+          • Byte 0 (bits [4:0]): NFFT transform length exponent
+          • Byte 1 (bit [8]): FWD_INV (1 = Forward FFT, 0 = Inverse FFT)
         
         :param n_points: Transform length (supported: 512, 1024, 2048).
         :param forward: True for Forward FFT, False for Inverse FFT (IFFT).
@@ -240,20 +243,21 @@ class HardwareTrigger:
         nfft = valid_sizes[n_points]
         fwd_bit = 1 if forward else 0
         
-        config_word = (nfft << 8) | fwd_bit
+        # PG109: Byte 0 = NFFT (bits [4:0]), Byte 1 = FWD_INV (bit [8])
+        config_word = (fwd_bit << 8) | nfft
         self.mmio.write(self.REG_FFT_CONFIG, config_word)
 
     def get_fft_length(self) -> int:
         """Reads active FFT transform length N from hardware register."""
         raw = self.mmio.read(self.REG_FFT_CONFIG)
-        nfft = (raw >> 8) & 0x1F
+        nfft = raw & 0x1F  # NFFT is in Byte 0 (bits [4:0])
         return 2 ** nfft
 
     def set_packet_size(self, size_samples: int):
         """
         Configures the hardware TLAST packetizer limit.
         
-        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048).
+        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048, 4096).
         """
         clamped = max(64, min(65535, int(size_samples)))
         self.mmio.write(self.REG_PACKET_SIZE, clamped)

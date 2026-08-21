@@ -246,13 +246,15 @@ class OscilloscopeOverlay(Overlay):
         # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
         num_bins = fft_pts // 2
         raw_half = raw_fft[:num_bins].astype(np.float64)
-        linear_volts = (raw_half / float(fft_pts)) * (3.3 / 4095.0)
+
+        # Calibrated CORDIC fixed-point magnitude
+        linear_volts = (raw_half / 32768.0) * 3.3
 
         unit_clean = unit.strip().upper()
         if unit_clean == "DBV":
             mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
         elif unit_clean == "DBFS":
-            mags = 20.0 * np.log10(np.maximum(raw_half / 65535.0, 1e-6))
+            mags = 20.0 * np.log10(np.maximum(raw_half / 32768.0, 1e-6))
         else:
             mags = linear_volts * 1000.0
 
