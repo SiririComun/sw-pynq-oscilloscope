@@ -3,7 +3,7 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-* feat/acoustic-analytics-curves 9f160b7 [origin/feat/acoustic-analytics-curves: ahead 1] feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration
+* feat/acoustic-analytics-curves c0a1628 [origin/feat/acoustic-analytics-curves: ahead 3] refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -12,7 +12,9 @@ Branch Tracking Status:
   main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-* 9f160b7  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
+* c0a1628  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-22 : refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments (SiririComun)
+* f892bbf  - 2026-08-22 : chore(release): pin hardware overlay to v1.5.0 and bump package version to 1.5.0 (SiririComun)
+* 9f160b7  - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
 * 17acf8c  (origin/feat/acoustic-analytics-curves) - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
 * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
 * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
@@ -24,10 +26,7 @@ Git Commit Graph & History:
 * d1f3f92  - 2026-08-20 : refactor(sw): expose fft channel selector in hw_trigger and unify ad3 wavegen binding (SiririComun)
 * b22c5a9  - 2026-08-20 : perf(dma): implement persistent cma buffer pooling and simultaneous sampling activation (SiririComun)
 * 689dd1b  - 2026-08-20 : chore(hw): pin hardware overlay dependency to v1.5.0-rc1 (SiririComun)
-* aa2a789  (tag: v1.4.5, origin/main, origin/HEAD, main) - 2026-08-19 : fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard (SiririComun)
-*   5146d9b  - 2026-08-19 : merge: feat(release) prepare v1.4.5-rc1 pre-release candidate for board testing (SiririComun)
-|\  
-| * 09ffe2f  (origin/feat/runtime-config-audio, feat/runtime-config-audio) - 2026-08-19 : chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks (SiririComun)```
+* aa2a789  (tag: v1.4.5, origin/main, origin/HEAD, main) - 2026-08-19 : fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard (SiririComun)```
 
 Files structure: 
 
@@ -58,9 +57,8 @@ Files structure:
 │   ├── 01_ad3_getting_started.ipynb
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
-│   ├── 04_fft_spectrum_analyzer.ipynb
-│   ├── 05_audio_dashboard.ipynb
-│   └── 06_acoustic_analytic_curves.ipynb
+│   ├── 04_audio_dashboard.ipynb
+│   └── 05_acoustic_analytic_curves.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── analytic_dashboard.py
@@ -79,7 +77,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 38 files
+8 directories, 37 files
 ```
 
 pypi.yml:
@@ -2956,15 +2954,16 @@ class AcousticAnalyticDashboard:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 3: Real-Time Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard\n",
+    "# Notebook 3: Academic Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard\n",
     "\n",
-    "This notebook deploys the complete interactive **Multi-Domain Instrument** supporting simultaneous dual-channel acquisition on the PYNQ-Z2 (`v1.3.0-rc1`).\n",
+    "This notebook deploys the interactive **Laboratory Instrument** with Analog Discovery 3 (AD3) integration on the PYNQ-Z2 (`v1.5.0`).\n",
     "\n",
-    "### 🌟 Multi-Channel Instrument Features:\n",
-    "- 📈 **Dual Oscilloscope Tab:** Real-time 1 MSPS synchronous traces for **CH1 (A0, Cyan)** and **CH2 (A1, Magenta)** with hardware edge triggering and live threshold line.\n",
-    "- 📊 **Spectrum Analyzer Tab:** Real-time 2048-point FPGA FFT ($0 - 500\\,\\text{kHz}$) with auto peak detector ($f_0$) and configurable dBV/dBFS/Linear scales.\n",
-    "- 🔀 **Dual View Tab:** Stacked multi-domain view displaying both Time-Domain channels (top) and Frequency-Domain spectrum (bottom) concurrently at ~30 FPS.\n",
-    "- ⚡ **Dual AD3 Wavegen Controls:** Real-time independent waveform, frequency, and amplitude controls for **W1 (A0)** and **W2 (A1)**."
+    "### 🌟 Academic Instrument Features:\n",
+    "- 📈 **500 kSPS Dual Scope:** Real-time synchronous traces for **CH1 (A0, Cyan)** and **CH2 (A1, Magenta)** with hardware edge triggering and live threshold line.\n",
+    "- ⚡ **Wideband AD3 Wavegen Controls ($10\\text{ Hz} - 1\\text{ MHz}$):** Real-time independent frequency, amplitude, and waveform controls for **W1 (A0)** and **W2 (A1)**.\n",
+    "- 🔬 **Nyquist Folding & Aliasing Exploration:** Freely dial frequencies beyond the $250\\,\\text{kHz}$ Nyquist limit ($300\\,\\text{kHz}, 450\\,\\text{kHz}, 800\\,\\text{kHz}$) to observe real-time spectral folding.\n",
+    "- 📊 **Dual Spectrum Analyzer Tab:** Real-time 2048-point spectrum ($0 - 250\\,\\text{kHz}$) with auto peak detector ($f_0$) and configurable dBV/dBFS/Linear scales.\n",
+    "- 🔀 **4-Tab Synchronized Display:** Dual Scope, Dual FFT, and isolated Channel 1/2 Views."
    ]
   },
   {
@@ -3044,7 +3043,7 @@ class AcousticAnalyticDashboard:
 }
 ```
 
-04_fft_spectrum_analyzer.ipynb:
+04_audio_dashboard.ipynb:
 
 ```json
 {
@@ -3053,200 +3052,15 @@ class AcousticAnalyticDashboard:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 4: Real-Time PL-Accelerated FFT & Spectrum Analyzer Guide\n",
+    "# Notebook 4: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
     "\n",
-    "This notebook demonstrates how to capture and visualize frequency spectra computed entirely within the **Programmable Logic (PL)** using the **Xilinx LogiCORE FFT** and **CORDIC Magnitude Engine** on the PYNQ-Z2 ($0 - 250\\,\\text{kHz}$)."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 1. System Setup & Permission Check"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay, StreamingFFT\n",
-    "import matplotlib.pyplot as plt\n",
-    "import time\n",
-    "\n",
-    "check_usb_permissions()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 2. Load Hardware Overlay in Wideband Scope Mode (500 kSPS)\n",
-    "Set profile to `oscilloscope` (M=1 bypass, $0 - 250\\,\\text{kHz}$ bandwidth)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol = OscilloscopeOverlay()\n",
-    "ol.set_profile(\"oscilloscope\")\n",
-    "print(\"✅ Oscilloscope & Spectrum Analyzer Overlay loaded successfully!\")\n",
-    "print(ol.get_profile_info())"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 3. Generate a Test Tone with Analog Discovery 3\n",
-    "Generate a **25 kHz Sine wave** (1.5V Amplitude, 1.65V DC Offset) on Wavegen Channel 1 (W1 $\\rightarrow$ A0)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol.wavegen.start(shape=\"Sine\", frequency=25000.0, amplitude=1.5, offset=1.65)\n",
-    "time.sleep(1.0)\n",
-    "print(\"✅ AD3 active @ 25 kHz (1.5V amplitude, 1.65V offset).\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. Capture PL Hardware FFT Spectrum\n",
-    "Capture the spectrum in **dBV** logarithmic units directly from the FPGA using `ol.capture_fft()`."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "freqs, mags = ol.capture_fft(unit=\"dBV\")\n",
-    "\n",
-    "peak_freq, peak_mag = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=1000.0)\n",
-    "print(f\"🎯 Dominant Peak: {peak_freq/1e3:.2f} kHz @ {peak_mag:.1f} dBV\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 5. Spectrum Visualization with Matplotlib\n",
-    "Plot the frequency spectrum showing the sharp fundamental peak at 25 kHz."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs / 1e3, mags, color=\"#FF007F\", linewidth=1.6, label=f\"PL Hardware FFT (Peak: {peak_freq/1e3:.1f} kHz)\")\n",
-    "plt.scatter([peak_freq / 1e3], [peak_mag], color=\"#00FFCC\", s=60, zorder=5, label=f\"Fundamental: {peak_freq/1e3:.1f} kHz ({peak_mag:.1f} dBV)\")\n",
-    "\n",
-    "plt.title(\"Hardware-Accelerated 500 kSPS FFT Spectrum (0 to 250 kHz)\", fontsize=12, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 150)\n",
-    "plt.ylim(-100, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 6. Harmonic Distortion Test (Square Wave Fourier Harmonics)\n",
-    "Update AD3 to a **10 kHz Square wave** and observe the fundamental ($10\\,\\text{kHz}$) and odd harmonics ($30, 50, 70, 90\\,\\text{kHz}$)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol.wavegen.update_parameters(shape=\"Square\", frequency=10000.0, amplitude=1.2)\n",
-    "time.sleep(0.5)\n",
-    "\n",
-    "freqs_sq, mags_sq = ol.capture_fft(unit=\"dBV\")\n",
-    "\n",
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs_sq / 1e3, mags_sq, color=\"#E040FB\", linewidth=1.6, label=\"10 kHz Square Wave Spectrum\")\n",
-    "\n",
-    "plt.title(\"Square Wave Odd Harmonics: 10k, 30k, 50k, 70k, 90k Hz\", fontsize=12, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 150)\n",
-    "plt.ylim(-110, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 7. Clean Hardware Shutdown"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol.close()\n",
-    "print(\"🔒 Hardware handles closed and CMA memory released.\")"
-   ]
-  }
- ],
- "metadata": {
-  "language_info": {
-   "name": "python"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
-```
-
-05_audio_dashboard.ipynb:
-
-```json
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook 5: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
-    "\n",
-    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.4.5`).\n",
+    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.5.0`).\n",
     "\n",
     "Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), this dashboard runs completely independently without requiring an Analog Discovery 3 (AD3).\n",
     "\n",
     "### 🌟 Audio Instrument Features:\n",
     "- 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.\n",
-    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
+    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
     "- 🚨 **Real-Time VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\\,\\text{V}$ or $V > 3.10\\,\\text{V}$).\n",
     "- 🎯 **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\\pm 0.5\\,\\text{Hz}$ accuracy.\n",
     "- 🪟 **Hann-Windowed Spectral Analysis:** Suppresses spectral leakage by $>32\\,\\text{dB}$ for clean harmonic overtone visualization.\n",
@@ -3332,7 +3146,7 @@ class AcousticAnalyticDashboard:
 }
 ```
 
-06_acoustic_analytic_curves.ipynb:
+05_acoustic_analytic_curves.ipynb:
 
 ```json
 {
@@ -3341,13 +3155,13 @@ class AcousticAnalyticDashboard:
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 6: Real-Time Acoustic Analytics (Amplitude vs. Time & Spectrogram Engine)\n",
+    "# Notebook 5: Real-Time Acoustic Analytics (Amplitude vs. Time & Spectrogram Engine)\n",
     "\n",
-    "This notebook demonstrates the high-precision **Acoustic Analytics & Diagnostic Engine** (`v1.5.0-rc1`), featuring:\n",
+    "This notebook demonstrates the high-precision **Acoustic Analytics & Diagnostic Engine** (`v1.5.0`), featuring:\n",
     "- 📈 **Amplitude vs. Time:** Instantaneous physical Hilbert analytic envelopes ($A(t) = \\sqrt{x^2 + \\hat{x}^2}$) and Inter-aural Level Differences ($\\Delta L(t)$ in dB).\n",
     "- 📊 **Frequency vs. Time:** 2D Short-Time Fourier Transform (STFT) rolling waterfall spectrograms with Blackman-Harris windowing.\n",
     "- 🎯 **Sub-Hertz Pitch Tracking:** Three-point parabolic fundamental frequency tracker ($f_0(t) \\pm 0.2\\,\\text{Hz}$).\n",
-    "- ⏱ **Microsecond Phase Difference:** Instantaneous inter-channel phase monitoring ($\\Delta \\phi(t)$)."
+    "- ⏱ **Microsecond Phase Difference:** Instantaneous inter-channel phase monitoring ($\\Delta \\phi(t)$) backed by true simultaneous dual-ADC sampling ($0.00\\,\\mu\\text{s}$ skew)."
    ]
   },
   {
@@ -3543,9 +3357,8 @@ TARGET_FILES=(
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
-    "notebooks/04_fft_spectrum_analyzer.ipynb:json"
-    "notebooks/05_audio_dashboard.ipynb:json"
-    "notebooks/06_acoustic_analytic_curves.ipynb:json"
+    "notebooks/04_audio_dashboard.ipynb:json"
+    "notebooks/05_acoustic_analytic_curves.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
