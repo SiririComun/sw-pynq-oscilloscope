@@ -295,7 +295,7 @@ class OscilloscopeOverlay(Overlay):
     # =========================================================================
 
     def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard."""
+        """Launches the general Oscilloscope Dashboard with AD3 integration."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
@@ -304,6 +304,13 @@ class OscilloscopeOverlay(Overlay):
         )
         dash.display()
         return dash
+
+    def ad3_dashboard(self, display_window: int = 1024):
+        """
+        Flagship Academic AD3 Laboratory Oscilloscope & Waveform Analyzer.
+        Features 10 Hz - 1 MHz signal generator controls and live aliasing exploration.
+        """
+        return self.dashboard(display_window=display_window)
 
     def audio_dashboard(self):
         """Launches the dedicated Audio & Microphone Dashboard."""
