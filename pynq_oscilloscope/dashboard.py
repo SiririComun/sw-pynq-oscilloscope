@@ -1,6 +1,7 @@
 """
-pynq_oscilloscope.dashboard: Full-Featured Interactive 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer UI.
-Features sub-sample trigger phase-locking, dynamic 5-period auto-ranging, and robust direct AD3 wavegen.
+pynq_oscilloscope.dashboard: Full-Featured Academic AD3 Dual-Channel Oscilloscope & Spectrum Analyzer.
+Features 500 kSPS simultaneous dual-channel acquisition, 10 Hz - 1 MHz AD3 wavegen controls,
+interactive Nyquist folding/aliasing exploration, sub-sample trigger phase-locking, and dynamic auto-ranging.
 """
 
 import time
@@ -12,105 +13,17 @@ import ipywidgets as widgets
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pynq import allocate
-from pydwf import DwfLibrary, DwfAnalogOutFunction, DwfAnalogOutNode
-from pydwf.utilities import openDwfDevice
 
 from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
-
-
-class DirectAD3Wavegen:
-    """Robust background wavegen manager using openDwfDevice directly."""
-    WAVEFORM_MAP = {
-        "Sine": DwfAnalogOutFunction.Sine,
-        "Square": DwfAnalogOutFunction.Square,
-        "Triangle": DwfAnalogOutFunction.Triangle
-    }
-
-    def __init__(self):
-        self.dwf = DwfLibrary()
-        self.is_running = False
-        self.is_ready = False
-        self._thread: Optional[threading.Thread] = None
-        self._device_handle = None
-        
-        self.ch1 = {"shape": "Sine", "frequency": 1000.0, "amplitude": 1.0, "offset": 1.65, "enabled": True}
-        self.ch2 = {"shape": "Square", "frequency": 2500.0, "amplitude": 1.0, "offset": 1.65, "enabled": True}
-
-    def _configure_ch(self, wavegen, ch: int, cfg: dict):
-        func = self.WAVEFORM_MAP.get(cfg["shape"], DwfAnalogOutFunction.Sine)
-        wavegen.nodeEnableSet(ch, DwfAnalogOutNode.Carrier, cfg["enabled"])
-        if cfg["enabled"]:
-            wavegen.nodeFunctionSet(ch, DwfAnalogOutNode.Carrier, func)
-            wavegen.nodeFrequencySet(ch, DwfAnalogOutNode.Carrier, cfg["frequency"])
-            wavegen.nodeAmplitudeSet(ch, DwfAnalogOutNode.Carrier, cfg["amplitude"])
-            wavegen.nodeOffsetSet(ch, DwfAnalogOutNode.Carrier, cfg["offset"])
-        wavegen.configure(ch, cfg["enabled"])
-
-    def _worker(self):
-        try:
-            self._device_handle = openDwfDevice(self.dwf)
-            wavegen = self._device_handle.analogOut
-            
-            self._configure_ch(wavegen, 0, self.ch1)
-            self._configure_ch(wavegen, 1, self.ch2)
-            self.is_ready = True
-            print("[AD3] Dual Wavegen active: W1 (CH1) -> A0, W2 (CH2) -> A1.")
-            
-            prev_ch1 = self.ch1.copy()
-            prev_ch2 = self.ch2.copy()
-            
-            while self.is_running:
-                if self.ch1 != prev_ch1:
-                    self._configure_ch(wavegen, 0, self.ch1)
-                    prev_ch1 = self.ch1.copy()
-                if self.ch2 != prev_ch2:
-                    self._configure_ch(wavegen, 1, self.ch2)
-                    prev_ch2 = self.ch2.copy()
-                time.sleep(0.05)
-                
-            self.is_ready = False
-            wavegen.configure(0, False)
-            wavegen.configure(1, False)
-            self._device_handle.close()
-            self._device_handle = None
-            print("[AD3] Wavegen stopped cleanly.")
-        except Exception as e:
-            print(f"[AD3] Note: {e}")
-            self.is_ready = False
-            self.is_running = False
-
-    def start(self, **kwargs):
-        if self.is_running:
-            return
-        self.is_ready = False
-        self.is_running = True
-        self._thread = threading.Thread(target=self._worker, daemon=True)
-        self._thread.start()
-
-    def update_ch1(self, shape=None, frequency=None, amplitude=None):
-        if shape: self.ch1["shape"] = shape
-        if frequency: self.ch1["frequency"] = float(frequency)
-        if amplitude: self.ch1["amplitude"] = float(amplitude)
-
-    def update_ch2(self, shape=None, frequency=None, amplitude=None):
-        if shape: self.ch2["shape"] = shape
-        if frequency: self.ch2["frequency"] = float(frequency)
-        if amplitude: self.ch2["amplitude"] = float(amplitude)
-
-    def stop(self):
-        self.is_ready = False
-        if self.is_running:
-            self.is_running = False
-            if self._thread and self._thread.is_alive():
-                self._thread.join(timeout=1.0)
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 
 class OscilloscopeDashboard:
     """
-    Complete 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard.
-    Features dynamic 5-period auto-range scaling and jitter-free edge trigger locking.
+    Complete 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard for Analog Discovery 3.
+    Features 500 kSPS sampling, 10 Hz - 1 MHz wavegen span, and dynamic 5-period auto-range scaling.
     """
 
     def __init__(
@@ -122,17 +35,21 @@ class OscilloscopeDashboard:
     ):
         self.overlay = overlay
         self.packet_size = packet_size
-        self.num_pts_per_ch = packet_size // 2  # 1024 samples per channel
-        self.fs_per_ch = 50_000.0               # 50 kSPS audio rate
+        self.num_pts_per_ch = packet_size // 2
+        self.fs_per_ch = 500_000.0  # 500 kSPS per channel (M=1 Wideband Scope Mode, Nyquist = 250 kHz)
         self.fft_points = fft_points
         self.display_window = display_window
-        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 20.48 ms per ch (40.96 ms total)
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
         
         self._is_running = False
         self._single_done = False
         self._thread: Optional[threading.Thread] = None
         
-        self.ad3 = DirectAD3Wavegen()
+        # Bind directly to unified AD3 signal generator
+        if self.overlay and hasattr(self.overlay, "wavegen"):
+            self.ad3 = self.overlay.wavegen
+        else:
+            self.ad3 = AD3SignalGenerator()
 
         if self.overlay and hasattr(self.overlay, "trigger"):
             self.trigger = self.overlay.trigger
@@ -178,31 +95,36 @@ class OscilloscopeDashboard:
         self.trig_level_input = widgets.BoundedFloatText(value=1.65, min=0.0, max=3.3, step=0.05, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
-        # 3. Channel 1 Controls (W1 -> A0)
+        # 3. Channel 1 Controls (W1 -> A0, 10 Hz to 1 MHz)
         self.ch1_shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Sine", description="CH1 (A0):", layout=widgets.Layout(width="180px"))
         self.ch1_amp_slider = widgets.FloatSlider(value=1.0, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px"))
         self.ch1_amp_input = widgets.BoundedFloatText(value=1.0, min=0.1, max=1.5, step=0.1, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.ch1_amp_slider, "value"), (self.ch1_amp_input, "value"))
-        self.ch1_freq_slider = widgets.IntSlider(value=1000, min=50, max=10000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.ch1_freq_input = widgets.BoundedIntText(value=1000, min=50, max=10000, step=50, layout=widgets.Layout(width="95px"))
+        self.ch1_freq_slider = widgets.IntSlider(value=25000, min=10, max=1000000, step=100, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.ch1_freq_input = widgets.BoundedIntText(value=25000, min=10, max=1000000, step=100, layout=widgets.Layout(width="100px"))
         widgets.jslink((self.ch1_freq_slider, "value"), (self.ch1_freq_input, "value"))
 
-        # 4. Channel 2 Controls (W2 -> A1)
+        # 4. Channel 2 Controls (W2 -> A1, 10 Hz to 1 MHz)
         self.ch2_shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Square", description="CH2 (A1):", layout=widgets.Layout(width="180px"))
         self.ch2_amp_slider = widgets.FloatSlider(value=1.0, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px"))
         self.ch2_amp_input = widgets.BoundedFloatText(value=1.0, min=0.1, max=1.5, step=0.1, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.ch2_amp_slider, "value"), (self.ch2_amp_input, "value"))
-        self.ch2_freq_slider = widgets.IntSlider(value=2500, min=50, max=10000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.ch2_freq_input = widgets.BoundedIntText(value=2500, min=50, max=10000, step=50, layout=widgets.Layout(width="95px"))
+        self.ch2_freq_slider = widgets.IntSlider(value=60000, min=10, max=1000000, step=100, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.ch2_freq_input = widgets.BoundedIntText(value=60000, min=10, max=1000000, step=100, layout=widgets.Layout(width="100px"))
         widgets.jslink((self.ch2_freq_slider, "value"), (self.ch2_freq_input, "value"))
 
-        # 5. FFT Controls
+        # 5. FFT Controls (Wideband 250 kHz Nyquist)
         self.fft_unit_dd = widgets.Dropdown(options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px"))
-        self.fft_span_dd = widgets.Dropdown(options=[("Full (25 kHz)", 25000), ("8 kHz (Audio)", 8000), ("2 kHz (Bass Zoom)", 2000)], value=8000, description="Span / Zoom:", layout=widgets.Layout(width="210px"))
+        self.fft_span_dd = widgets.Dropdown(
+            options=[("Full Nyquist (250 kHz)", 250000), ("Audio Band (25 kHz)", 25000), ("Bass Sub-Band (5 kHz)", 5000)],
+            value=250000,
+            description="Span / Zoom:",
+            layout=widgets.Layout(width="230px")
+        )
 
     def _build_plots(self):
         t_ms = np.linspace(0, self.total_duration_ms, self.num_pts_per_ch - 16)
-        initial_freq = np.linspace(0, 25000, len(t_ms) // 2 + 1)
+        initial_freq = np.linspace(0, 250000, len(t_ms) // 2 + 1)
 
         # Tab 1: Dual Scope
         self.fig_dual_scope = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
@@ -222,13 +144,13 @@ class OscilloscopeDashboard:
             subplot_titles=("<b>Channel 1: A0 Spectrum (FFT)</b>", "<b>Channel 2: A1 Spectrum (FFT)</b>"))
         self.fig_dual_fft = go.FigureWidget(self.fig_dual_fft)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 FFT", row=1, col=1)
-        self.fig_dual_fft.add_scatter(x=[1000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
+        self.fig_dual_fft.add_scatter(x=[25000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 FFT", row=2, col=1)
-        self.fig_dual_fft.add_scatter(x=[2500], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
+        self.fig_dual_fft.add_scatter(x=[60000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
         self.fig_dual_fft.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t2")
         self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=1, col=1)
         self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_dual_fft.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_dual_fft.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab 3: Channel 1 View
         self.fig_ch1_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
@@ -240,7 +162,7 @@ class OscilloscopeDashboard:
         self.fig_ch1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t3")
         self.fig_ch1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch1_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch1_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_ch1_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab 4: Channel 2 View
         self.fig_ch2_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
@@ -252,7 +174,7 @@ class OscilloscopeDashboard:
         self.fig_ch2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t4")
         self.fig_ch2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch2_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch2_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_ch2_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_ch1_view, self.fig_ch2_view])
         self.tabs.set_title(0, "📈 Dual Scope (A0 & A1)")
@@ -331,11 +253,17 @@ class OscilloscopeDashboard:
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
 
-        # Initialize XADC sequencer
+        # Initialize XADC continuous sequence
         if hasattr(self.overlay, "xadc_wiz_0"):
             self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # Set Scope Mode (M=1 Decimation Bypass, 500 kSPS)
+        if self.overlay and hasattr(self.overlay, "set_profile"):
+            self.overlay.set_profile("oscilloscope")
+        elif trig:
+            trig.set_decimation(1)
 
         # Reset DMA 0
         dma_time.mmio.write(0x30, 0x04)
@@ -343,16 +271,19 @@ class OscilloscopeDashboard:
         dma_time.recvchannel.start()
 
         if trig:
-            trig.mmio.write(0x0C, 5000000)  # 50ms Auto-Timeout
+            trig.mmio.write(0x0C, 5000000)
             self._update_trig_level()
 
         # Start AD3 Wavegen
-        self.ad3.start()
+        self.ad3.start(
+            shape=self.ch1_shape_dd.value, frequency=self.ch1_freq_slider.value, amplitude=self.ch1_amp_slider.value,
+            ch2_shape=self.ch2_shape_dd.value, ch2_frequency=self.ch2_freq_slider.value, ch2_amplitude=self.ch2_amp_slider.value
+        )
         time.sleep(0.5)
 
         buf_time = allocate(shape=(self.packet_size,), dtype="u2")
         dma_armed = False
-        print(f"[Dashboard] Active (50 kSPS Audio Stream | 40.96 ms Window)")
+        print(f"[Dashboard] Active (500 kSPS Simultaneous Scope Stream | {self.total_duration_ms:.3f} ms Window)")
 
         try:
             while self._is_running:
@@ -387,8 +318,8 @@ class OscilloscopeDashboard:
                     mag_a1 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a1)) / (n / 2.0), 1e-6))
 
                     vpp1, vpp2 = float(np.ptp(p_v1)), float(np.ptp(p_v2))
-                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=20.0)
-                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=20.0)
+                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=50.0)
+                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=50.0)
 
                     trig_v = float(self.trig_level_slider.value)
                     is_falling = (self.trig_edge_dd.value == "Falling")
@@ -396,27 +327,25 @@ class OscilloscopeDashboard:
                     active_tab = self.tabs.selected_index
                     max_span = float(self.fft_span_dd.value)
 
-                    # 1. Sub-sample Phase Lock: Find exact trigger edge in active channel
+                    # Sub-sample Phase Lock
                     trig_src_sig = p_v1 if is_trig_a0 else p_v2
                     edge_offset = self._find_trigger_edge(trig_src_sig, trig_v, is_falling)
 
-                    # 2. Dynamic 5-Period Auto-Range Timebase
+                    # Dynamic 5-Period Auto-Range Timebase
                     active_f0 = p_f1 if is_trig_a0 else p_f2
-                    if self.autorange_toggle.value and active_f0 > 30.0:
+                    if self.autorange_toggle.value and active_f0 > 50.0:
                         period_ms = 1000.0 / active_f0
-                        show_duration_ms = min(self.total_duration_ms, max(1.5, 5.0 * period_ms))
+                        show_duration_ms = min(self.total_duration_ms, max(0.01, 5.0 * period_ms))
                         show_pts = int((show_duration_ms / 1000.0) * self.fs_per_ch)
-                        show_pts = max(30, min(show_pts, len(p_v1) - edge_offset))
+                        show_pts = max(16, min(show_pts, len(p_v1) - edge_offset))
                     else:
                         show_pts = len(p_v1) - edge_offset
                         show_duration_ms = (show_pts / self.fs_per_ch) * 1000.0
 
-                    # Slice precisely starting at the trigger edge
                     plot_v1 = p_v1[edge_offset : edge_offset + show_pts]
                     plot_v2 = p_v2[edge_offset : edge_offset + show_pts]
                     t_ms = np.linspace(0, show_duration_ms, len(plot_v1))
 
-                    # Update Active Tab
                     if active_tab == 0:  # Tab 1: Dual Scope
                         with self.fig_dual_scope.batch_update():
                             self.fig_dual_scope.data[0].x = t_ms
@@ -440,12 +369,12 @@ class OscilloscopeDashboard:
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
                             self.fig_dual_fft.data[1].x = [p_f1]
-                            self.fig_dual_fft.data[1].y = [mag_a0[p_idx1]]
+                            self.fig_dual_fft.data[1].y = [p_m1]
                             self.fig_dual_fft.data[1].text = [f" {p_f1:.1f} Hz"]
                             self.fig_dual_fft.data[2].x = freqs
                             self.fig_dual_fft.data[2].y = mag_a1
                             self.fig_dual_fft.data[3].x = [p_f2]
-                            self.fig_dual_fft.data[3].y = [mag_a1[p_idx2]]
+                            self.fig_dual_fft.data[3].y = [p_m2]
                             self.fig_dual_fft.data[3].text = [f" {p_f2:.1f} Hz"]
                             self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
 
@@ -463,7 +392,7 @@ class OscilloscopeDashboard:
                     elif active_tab == 3:  # Tab 4: CH2 View
                         with self.fig_ch2_view.batch_update():
                             self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = p_v2
+                            self.fig_ch2_view.data[0].y = plot_v2
                             self.fig_ch2_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch2_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch2_view.data[2].x = freqs

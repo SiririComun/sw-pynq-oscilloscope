@@ -1,6 +1,6 @@
 """
 pynq_oscilloscope.hw_trigger: High-level driver for the FPGA-based 'axis_trigger_unit' IP.
-Acts as the central Timing & Configuration Controller for Triggering, Decimation, and FFT length.
+Acts as the central Timing & Configuration Controller for Triggering, Decimation, FFT channel routing, and FFT length.
 """
 
 from typing import Union, Optional, Tuple
@@ -12,8 +12,8 @@ class HardwareTrigger:
     High-level Python driver for the FPGA-based 'axis_trigger_unit' IP.
     
     Interfaces via AXI4-Lite registers to configure hardware-level edge detection,
-    trigger channel source selection (CH1/A0 vs CH2/A1), voltage thresholds,
-    decimation factors (M=1, 10, 20, 50), FFT transform length (N=512, 1024, 2048),
+    trigger channel source selection (CH1/A0 vs CH2/A1), FFT channel routing (A0 vs A1),
+    voltage thresholds, decimation factors (M=1, 10, 20, 50), FFT transform length (N=512, 1024, 2048),
     and packetizer boundaries.
     """
 
@@ -24,18 +24,19 @@ class HardwareTrigger:
     REG_TIMEOUT     = 0x0C
     REG_HYSTERESIS  = 0x10
     REG_DECIMATION  = 0x14  # [1:0] 00=M=1, 01=M=10, 10=M=20, 11=M=50
-    REG_FFT_CONFIG  = 0x18  # [15:0] (NFFT << 8) | FWD_INV
+    REG_FFT_CONFIG  = 0x18  # [15:0] (FWD_INV << 8) | NFFT (PG109 Format)
     REG_PACKET_SIZE = 0x1C  # [15:0] Samples per DMA frame
 
-    # Bit masks for REG_CONTROL
+    # Bit masks for REG_CONTROL (0x00)
     BIT_ARM          = 1 << 0  # Bit 0: Arm trigger unit
     BIT_AUTO_MODE    = 1 << 1  # Bit 1: 1 = Auto Mode, 0 = Normal Mode
     BIT_EDGE_FALLING = 1 << 2  # Bit 2: 0 = Rising Edge, 1 = Falling Edge
     BIT_SINGLE_SHOT  = 1 << 3  # Bit 3: 1 = Single Shot, 0 = Continuous
     BIT_FORCE_TRIG   = 1 << 4  # Bit 4: Software force trigger pulse
     BIT_TRIG_SRC_CH2 = 1 << 5  # Bit 5: 0 = Trigger on CH1 (A0), 1 = Trigger on CH2 (A1)
+    BIT_FFT_SRC_CH2  = 1 << 6  # Bit 6: 0 = Route CH1 (A0) to FFT, 1 = Route CH2 (A1) to FFT
 
-    # Bit masks for REG_STATUS
+    # Bit masks for REG_STATUS (0x04)
     STATUS_ARMED     = 1 << 0
     STATUS_TRIGGERED = 1 << 1
     STATUS_STREAMING = 1 << 2
@@ -65,7 +66,7 @@ class HardwareTrigger:
         else:
             self.mmio = MMIO(0x43C10000, 65536)
 
-        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, CH1 (A0), M=10, N=2048
+        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, CH1 (A0), M=10, N=2048, FFT on CH1
         self.configure(
             mode="Auto",
             edge="Rising",
@@ -74,6 +75,7 @@ class HardwareTrigger:
             timeout_ms=50.0,
             hysteresis_volts=0.02
         )
+        self.set_fft_channel("CH1")
 
     # =========================================================================
     # 1. Trigger & Acquisition Settings
@@ -110,6 +112,25 @@ class HardwareTrigger:
         """Read active trigger source channel from hardware."""
         ctrl = self.mmio.read(self.REG_CONTROL)
         return "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
+
+    def set_fft_channel(self, source: str = "CH1"):
+        """
+        Configures the hardware stream demux routing to the FFT core (xfft_0).
+        
+        :param source: 'CH1' (A0) or 'CH2' (A1).
+        """
+        src_clean = source.strip().upper()
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        if "CH2" in src_clean or "A1" in src_clean:
+            ctrl |= self.BIT_FFT_SRC_CH2
+        else:
+            ctrl &= ~self.BIT_FFT_SRC_CH2
+        self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def get_fft_channel(self) -> str:
+        """Read the active channel routed to the hardware FFT core."""
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        return "CH2 (A1)" if (ctrl & self.BIT_FFT_SRC_CH2) else "CH1 (A0)"
 
     def set_mode(self, mode: str):
         """Set trigger operating mode: 'Auto', 'Normal', or 'Single'."""
@@ -186,7 +207,7 @@ class HardwareTrigger:
         self.mmio.write(self.REG_CONTROL, ctrl | self.BIT_FORCE_TRIG)
 
     # =========================================================================
-    # 2. Phase 2.5 Runtime Timing & Multi-Regime Controls
+    # 2. Runtime Timing & Multi-Regime Controls
     # =========================================================================
 
     def set_decimation(self, factor: int):
@@ -208,6 +229,9 @@ class HardwareTrigger:
     def set_fft_config(self, n_points: int = 2048, forward: bool = True):
         """
         Dynamically configures the Xilinx LogiCORE FFT core via the 16-bit s_axis_config bus.
+        Following PG109 format:
+          • Byte 0 (bits [4:0]): NFFT transform length exponent
+          • Byte 1 (bit [8]): FWD_INV (1 = Forward FFT, 0 = Inverse FFT)
         
         :param n_points: Transform length (supported: 512, 1024, 2048).
         :param forward: True for Forward FFT, False for Inverse FFT (IFFT).
@@ -219,21 +243,21 @@ class HardwareTrigger:
         nfft = valid_sizes[n_points]
         fwd_bit = 1 if forward else 0
         
-        # 16-bit configuration word: Byte 1 = NFFT, Byte 0 = FWD_INV
-        config_word = (nfft << 8) | fwd_bit
+        # PG109: Byte 0 = NFFT (bits [4:0]), Byte 1 = FWD_INV (bit [8])
+        config_word = (fwd_bit << 8) | nfft
         self.mmio.write(self.REG_FFT_CONFIG, config_word)
 
     def get_fft_length(self) -> int:
         """Reads active FFT transform length N from hardware register."""
         raw = self.mmio.read(self.REG_FFT_CONFIG)
-        nfft = (raw >> 8) & 0x1F
+        nfft = raw & 0x1F  # NFFT is in Byte 0 (bits [4:0])
         return 2 ** nfft
 
     def set_packet_size(self, size_samples: int):
         """
         Configures the hardware TLAST packetizer limit.
         
-        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048).
+        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048, 4096).
         """
         clamped = max(64, min(65535, int(size_samples)))
         self.mmio.write(self.REG_PACKET_SIZE, clamped)
@@ -257,10 +281,11 @@ class HardwareTrigger:
     def __repr__(self) -> str:
         ctrl = self.mmio.read(self.REG_CONTROL)
         src = "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
+        fft_src = "CH2 (A1)" if (ctrl & self.BIT_FFT_SRC_CH2) else "CH1 (A0)"
         edge = "Falling" if (ctrl & self.BIT_EDGE_FALLING) else "Rising"
         mode = "Auto" if (ctrl & self.BIT_AUTO_MODE) else ("Single" if (ctrl & self.BIT_SINGLE_SHOT) else "Normal")
         armed = "ARMED" if (ctrl & self.BIT_ARM) else "DISARMED"
         m = self.get_decimation()
         n = self.get_fft_length()
         pkt = self.get_packet_size()
-        return f"<HardwareTrigger: {armed}, Src={src}, Mode={mode}, Edge={edge}, M={m}x, N={n}, Pkt={pkt}>"
+        return f"<HardwareTrigger: {armed}, TrigSrc={src}, FFTSrc={fft_src}, Mode={mode}, Edge={edge}, M={m}x, N={n}, Pkt={pkt}>"

@@ -1,6 +1,6 @@
 """
 pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
-Features runtime profile switching (Lab Scope, Audio, Speech, Bass Zoom), non-blocking DMA polling, and Jupyter audio playback.
+Features runtime profile switching, persistent zero-copy CMA buffer pooling, simultaneous sampling, and Jupyter audio playback.
 """
 
 from pathlib import Path
@@ -16,6 +16,7 @@ from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
+from pynq_oscilloscope.analytic_dashboard import AcousticAnalyticDashboard
 
 
 class OscilloscopeOverlay(Overlay):
@@ -49,6 +50,9 @@ class OscilloscopeOverlay(Overlay):
         self.fft_points = fft_points
         self.current_profile = "audio"
         self.fs_per_ch = 50_000.0
+
+        # Persistent CMA Buffer Pool (Zero-Copy)
+        self._buf_time = allocate(shape=(self.packet_size,), dtype="u2")
         
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
@@ -89,13 +93,22 @@ class OscilloscopeOverlay(Overlay):
         self.trigger.set_fft_config(n_points=n_val, forward=True)
         self.trigger.set_packet_size(pkt_val)
 
-        # 2. Update Driver State
+        # 2. Re-allocate persistent CMA buffer ONLY if packet size changed
+        if self._buf_time is None or len(self._buf_time) != pkt_val:
+            if self._buf_time is not None:
+                try:
+                    self._buf_time.close()
+                except Exception:
+                    pass
+            self._buf_time = allocate(shape=(pkt_val,), dtype="u2")
+
+        # 3. Update Driver State
         self.current_profile = mode_clean
         self.packet_size = pkt_val
         self.fft_points = n_val
         self.fs_per_ch = 500_000.0 / m_val
 
-        # 3. Update FFT Grid
+        # 4. Update FFT Grid
         self.fft.fft_points = n_val
         self.fft.num_bins = n_val // 2
         self.fft.sample_rate_hz = self.fs_per_ch
@@ -127,7 +140,7 @@ class OscilloscopeOverlay(Overlay):
         }
 
     # =========================================================================
-    # 2. Synchronized Audio & Stereo Capture (Hardened Non-Blocking Polling)
+    # 2. Synchronized Audio & Stereo Capture (Persistent Zero-Copy DMA)
     # =========================================================================
 
     def capture_stereo(
@@ -137,22 +150,21 @@ class OscilloscopeOverlay(Overlay):
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        with non-blocking timeout polling.
+        using the persistent pre-allocated CMA buffer pool and simultaneous XADC conversion.
         """
-        # 1. Initialize XADC continuous sequence
+        # 1. Initialize XADC into Continuous Sequence Mode on Vaux1 and Vaux9
         if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41 = Continuous Sequence Mode
-            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
-            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49 = Enable Vaux1 & Vaux9
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41: Continuous Sequence Mode
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48: Disable internal channels
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49: Enable Vaux1 (A0) & Vaux9 (A1)
 
-        # 2. Reset DMA 0
+        # 2. Reset DMA 0 channel
         self.axi_dma_0.mmio.write(0x30, 0x04)
-        time.sleep(0.005)
+        time.sleep(0.002)
         self.axi_dma_0.recvchannel.start()
 
-        # 3. Queue receive buffer
-        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
-        self.axi_dma_0.recvchannel.transfer(buf_time)
+        # 3. Queue persistent receive buffer
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
 
         # 4. Arm Hardware Trigger
         self.trigger.arm()
@@ -161,7 +173,7 @@ class OscilloscopeOverlay(Overlay):
         start = time.time()
         while time.time() - start < timeout:
             if self.axi_dma_0.recvchannel.idle:
-                raw_samples = np.array(buf_time)
+                raw_samples = np.array(self._buf_time)
                 
                 # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
                 raw_ch1 = raw_samples[0::2]
@@ -175,11 +187,9 @@ class OscilloscopeOverlay(Overlay):
                     voltages_ch1 = voltages_ch1[crop_startup_samples:-crop_startup_samples]
                     voltages_ch2 = voltages_ch2[crop_startup_samples:-crop_startup_samples]
 
-                buf_time.close()
                 return voltages_ch1, voltages_ch2
-            time.sleep(0.01)
+            time.sleep(0.005)
 
-        buf_time.close()
         raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or mode.")
 
     def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
@@ -187,9 +197,71 @@ class OscilloscopeOverlay(Overlay):
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
 
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware decimated audio FFT spectrum from Channel 1."""
-        return self.fft.capture_spectrum(unit=unit)
+    def capture_fft(self, unit: str = "dBV", timeout: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures hardware single-channel FFT spectrum from the active channel selected in trigger
+        using non-blocking DMA synchronization.
+        """
+        # 1. Initialize XADC sequencer (0x2000)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # 2. Match FFT transform length to demuxed channel frame size (N = packet_size / 2)
+        fft_pts = self.packet_size // 2
+        self.trigger.set_fft_config(n_points=fft_pts, forward=True)
+
+        # 3. Reset and start both DMA channels
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        self.axi_dma_1.mmio.write(0x30, 0x04)
+        time.sleep(0.002)
+        self.axi_dma_0.recvchannel.start()
+        self.axi_dma_1.recvchannel.start()
+
+        # 4. Queue receive buffers
+        buf_fft = allocate(shape=(fft_pts,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
+        self.axi_dma_1.recvchannel.transfer(buf_fft)
+
+        # 5. Arm Hardware Trigger
+        self.trigger.arm()
+
+        # 6. Non-blocking poll with timeout
+        start = time.time()
+        ok = False
+        while time.time() - start < timeout:
+            if self.axi_dma_1.recvchannel.idle:
+                ok = True
+                break
+            time.sleep(0.005)
+
+        if not ok:
+            buf_fft.close()
+            raise TimeoutError(f"PL FFT capture timed out after {timeout} seconds.")
+
+        raw_fft = np.array(buf_fft, copy=True)
+        buf_fft.close()
+
+        # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
+        num_bins = fft_pts // 2
+        raw_half = raw_fft[:num_bins].astype(np.float64)
+
+        # Calibrated CORDIC fixed-point magnitude
+        linear_volts = (raw_half / 32768.0) * 3.3
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half / 32768.0, 1e-6))
+        else:
+            mags = linear_volts * 1000.0
+
+        delta_f = self.fs_per_ch / float(fft_pts)
+        freqs = np.arange(num_bins) * delta_f
+
+        return freqs, mags
 
     # =========================================================================
     # 3. Jupyter Audio Playback
@@ -223,7 +295,7 @@ class OscilloscopeOverlay(Overlay):
     # =========================================================================
 
     def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard."""
+        """Launches the general Oscilloscope Dashboard with AD3 integration."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
@@ -232,6 +304,13 @@ class OscilloscopeOverlay(Overlay):
         )
         dash.display()
         return dash
+
+    def ad3_dashboard(self, display_window: int = 1024):
+        """
+        Flagship Academic AD3 Laboratory Oscilloscope & Waveform Analyzer.
+        Features 10 Hz - 1 MHz signal generator controls and live aliasing exploration.
+        """
+        return self.dashboard(display_window=display_window)
 
     def audio_dashboard(self):
         """Launches the dedicated Audio & Microphone Dashboard."""
@@ -243,7 +322,23 @@ class OscilloscopeOverlay(Overlay):
         dash.display()
         return dash
 
+    def analytic_dashboard(self):
+        """Launches the dedicated Real-Time Acoustic Analytics & Spectrogram Dashboard."""
+        dash = AcousticAnalyticDashboard(
+            overlay=self,
+            packet_size=self.packet_size,
+            fs_per_ch=self.fs_per_ch
+        )
+        dash.display()
+        return dash
+
     def close(self):
+        if hasattr(self, "_buf_time") and self._buf_time is not None:
+            try:
+                self._buf_time.close()
+                self._buf_time = None
+            except Exception:
+                pass
         if hasattr(self, "xadc") and self.xadc is not None:
             self.xadc.close()
         if hasattr(self, "fft") and self.fft is not None:

@@ -1,32 +1,32 @@
 Git Context & Branch Info:
 
 ```log
-Current Branch: main
+Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-  feat/dual-xadc            e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
-  feat/hw-trigger           cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
-  feat/pl-audio-decimation  96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
-  feat/pl-fft               26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-  feat/runtime-config-audio 09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
-* main                      5146d9b [origin/main] merge: feat(release) prepare v1.4.5-rc1 pre-release candidate for board testing
+* feat/acoustic-analytics-curves c0a1628 [origin/feat/acoustic-analytics-curves: ahead 3] refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments
+  feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
+  feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
+  feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
+  feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
+  feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
+  main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-*   5146d9b  (HEAD -> main, origin/main, origin/HEAD) - 2026-08-19 : merge: feat(release) prepare v1.4.5-rc1 pre-release candidate for board testing (SiririComun)
-|\  
-| * 09ffe2f  (origin/feat/runtime-config-audio, feat/runtime-config-audio) - 2026-08-19 : chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks (SiririComun)
-| * a7feb27  - 2026-08-19 : docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite (SiririComun)
-| * 209d684  - 2026-08-19 : feat(overlay): reconcile v1.4.0 drivers with multi-regime profiles, 7-notebook suite, and audio playback (SiririComun)
-| * 0536773  - 2026-08-18 : chore(release): pin hardware overlay to v1.4.5-rc1 and update context summary (SiririComun)
-| * ec4fb27  - 2026-08-18 : test(notebook): add 07_runtime_multiregime_test notebook for multi-profile validation (SiririComun)
-| * e5b6a9a  - 2026-08-18 : feat(overlay): implement unified multi-regime profile switcher and audio playback (SiririComun)
-| * afa7875  - 2026-08-18 : feat(fft): implement multi-windowing engine (Hann, Hamming, Blackman, Flat-Top) (SiririComun)
-| * 701aadb  - 2026-08-18 : feat(trigger): add runtime decimation, FFT transform length, and packet size AXI-Lite controls (SiririComun)
-* | 96e8763  (tag: v1.4.0, origin/feat/pl-audio-decimation, feat/pl-audio-decimation) - 2026-08-19 : chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook (SiririComun)
-* | 54455e5  - 2026-08-19 : fix(dashboard): add auto-range button and trigger phase-locking to AudioDashboard (SiririComun)
-* | 99916b1  - 2026-08-19 : test(notebook): add 05_audio_dashboard notebook for dedicated audio instrument (SiririComun)
-* | c53c576  - 2026-08-19 : fix(dashboard): implement sub-sample trigger phase-locking and dynamic 5-period auto-range (SiririComun)
-* | 21bb110  - 2026-08-19 : fix(dashboard): align timebase to 50 kSPS, correct trigger polarity, and integrate direct AD3 wavegen (SiririComun)
-* | 1ce59ff  - 2026-08-19 : fix(overlay): implement non-blocking safe capture_stereo with XADC sequencer auto-init (SiririComun)```
+* c0a1628  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-22 : refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments (SiririComun)
+* f892bbf  - 2026-08-22 : chore(release): pin hardware overlay to v1.5.0 and bump package version to 1.5.0 (SiririComun)
+* 9f160b7  - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
+* 17acf8c  (origin/feat/acoustic-analytics-curves) - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
+* 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
+* 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
+* 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
+* d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
+* 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
+* 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)
+* 188b932  - 2026-08-20 : feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine (SiririComun)
+* d1f3f92  - 2026-08-20 : refactor(sw): expose fft channel selector in hw_trigger and unify ad3 wavegen binding (SiririComun)
+* b22c5a9  - 2026-08-20 : perf(dma): implement persistent cma buffer pooling and simultaneous sampling activation (SiririComun)
+* 689dd1b  - 2026-08-20 : chore(hw): pin hardware overlay dependency to v1.5.0-rc1 (SiririComun)
+* aa2a789  (tag: v1.4.5, origin/main, origin/HEAD, main) - 2026-08-19 : fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard (SiririComun)```
 
 Files structure: 
 
@@ -57,10 +57,12 @@ Files structure:
 │   ├── 01_ad3_getting_started.ipynb
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
-│   ├── 04_fft_spectrum_analyzer.ipynb
-│   └── 05_audio_dashboard.ipynb
+│   ├── 04_audio_dashboard.ipynb
+│   └── 05_acoustic_analytic_curves.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
+│   ├── analytic_dashboard.py
+│   ├── analytics.py
 │   ├── audio_dashboard.py
 │   ├── dashboard.py
 │   ├── env_checker.py
@@ -75,7 +77,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-8 directories, 35 files
+8 directories, 37 files
 ```
 
 pypi.yml:
@@ -120,7 +122,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.4.5"
+    "version": "v1.5.0"
 }```
 
 setup.py:
@@ -136,7 +138,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.4.5",
+    version="1.5.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -190,9 +192,10 @@ from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
+from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.4.5"
+__version__ = "1.5.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -204,6 +207,7 @@ __all__ = [
     "AD3SignalGenerator",
     "OscilloscopeDashboard",
     "AudioDashboard",
+    "AcousticAnalytics",
     "copy_notebooks",
 ]```
 
@@ -211,8 +215,9 @@ dashboard.py:
 
 ```python
 """
-pynq_oscilloscope.dashboard: Full-Featured Interactive 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer UI.
-Features sub-sample trigger phase-locking, dynamic 5-period auto-ranging, and robust direct AD3 wavegen.
+pynq_oscilloscope.dashboard: Full-Featured Academic AD3 Dual-Channel Oscilloscope & Spectrum Analyzer.
+Features 500 kSPS simultaneous dual-channel acquisition, 10 Hz - 1 MHz AD3 wavegen controls,
+interactive Nyquist folding/aliasing exploration, sub-sample trigger phase-locking, and dynamic auto-ranging.
 """
 
 import time
@@ -224,105 +229,17 @@ import ipywidgets as widgets
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pynq import allocate
-from pydwf import DwfLibrary, DwfAnalogOutFunction, DwfAnalogOutNode
-from pydwf.utilities import openDwfDevice
 
 from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
-
-
-class DirectAD3Wavegen:
-    """Robust background wavegen manager using openDwfDevice directly."""
-    WAVEFORM_MAP = {
-        "Sine": DwfAnalogOutFunction.Sine,
-        "Square": DwfAnalogOutFunction.Square,
-        "Triangle": DwfAnalogOutFunction.Triangle
-    }
-
-    def __init__(self):
-        self.dwf = DwfLibrary()
-        self.is_running = False
-        self.is_ready = False
-        self._thread: Optional[threading.Thread] = None
-        self._device_handle = None
-        
-        self.ch1 = {"shape": "Sine", "frequency": 1000.0, "amplitude": 1.0, "offset": 1.65, "enabled": True}
-        self.ch2 = {"shape": "Square", "frequency": 2500.0, "amplitude": 1.0, "offset": 1.65, "enabled": True}
-
-    def _configure_ch(self, wavegen, ch: int, cfg: dict):
-        func = self.WAVEFORM_MAP.get(cfg["shape"], DwfAnalogOutFunction.Sine)
-        wavegen.nodeEnableSet(ch, DwfAnalogOutNode.Carrier, cfg["enabled"])
-        if cfg["enabled"]:
-            wavegen.nodeFunctionSet(ch, DwfAnalogOutNode.Carrier, func)
-            wavegen.nodeFrequencySet(ch, DwfAnalogOutNode.Carrier, cfg["frequency"])
-            wavegen.nodeAmplitudeSet(ch, DwfAnalogOutNode.Carrier, cfg["amplitude"])
-            wavegen.nodeOffsetSet(ch, DwfAnalogOutNode.Carrier, cfg["offset"])
-        wavegen.configure(ch, cfg["enabled"])
-
-    def _worker(self):
-        try:
-            self._device_handle = openDwfDevice(self.dwf)
-            wavegen = self._device_handle.analogOut
-            
-            self._configure_ch(wavegen, 0, self.ch1)
-            self._configure_ch(wavegen, 1, self.ch2)
-            self.is_ready = True
-            print("[AD3] Dual Wavegen active: W1 (CH1) -> A0, W2 (CH2) -> A1.")
-            
-            prev_ch1 = self.ch1.copy()
-            prev_ch2 = self.ch2.copy()
-            
-            while self.is_running:
-                if self.ch1 != prev_ch1:
-                    self._configure_ch(wavegen, 0, self.ch1)
-                    prev_ch1 = self.ch1.copy()
-                if self.ch2 != prev_ch2:
-                    self._configure_ch(wavegen, 1, self.ch2)
-                    prev_ch2 = self.ch2.copy()
-                time.sleep(0.05)
-                
-            self.is_ready = False
-            wavegen.configure(0, False)
-            wavegen.configure(1, False)
-            self._device_handle.close()
-            self._device_handle = None
-            print("[AD3] Wavegen stopped cleanly.")
-        except Exception as e:
-            print(f"[AD3] Note: {e}")
-            self.is_ready = False
-            self.is_running = False
-
-    def start(self, **kwargs):
-        if self.is_running:
-            return
-        self.is_ready = False
-        self.is_running = True
-        self._thread = threading.Thread(target=self._worker, daemon=True)
-        self._thread.start()
-
-    def update_ch1(self, shape=None, frequency=None, amplitude=None):
-        if shape: self.ch1["shape"] = shape
-        if frequency: self.ch1["frequency"] = float(frequency)
-        if amplitude: self.ch1["amplitude"] = float(amplitude)
-
-    def update_ch2(self, shape=None, frequency=None, amplitude=None):
-        if shape: self.ch2["shape"] = shape
-        if frequency: self.ch2["frequency"] = float(frequency)
-        if amplitude: self.ch2["amplitude"] = float(amplitude)
-
-    def stop(self):
-        self.is_ready = False
-        if self.is_running:
-            self.is_running = False
-            if self._thread and self._thread.is_alive():
-                self._thread.join(timeout=1.0)
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 
 
 class OscilloscopeDashboard:
     """
-    Complete 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard.
-    Features dynamic 5-period auto-range scaling and jitter-free edge trigger locking.
+    Complete 4-Tab Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard for Analog Discovery 3.
+    Features 500 kSPS sampling, 10 Hz - 1 MHz wavegen span, and dynamic 5-period auto-range scaling.
     """
 
     def __init__(
@@ -334,17 +251,21 @@ class OscilloscopeDashboard:
     ):
         self.overlay = overlay
         self.packet_size = packet_size
-        self.num_pts_per_ch = packet_size // 2  # 1024 samples per channel
-        self.fs_per_ch = 50_000.0               # 50 kSPS audio rate
+        self.num_pts_per_ch = packet_size // 2
+        self.fs_per_ch = 500_000.0  # 500 kSPS per channel (M=1 Wideband Scope Mode, Nyquist = 250 kHz)
         self.fft_points = fft_points
         self.display_window = display_window
-        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0  # 20.48 ms per ch (40.96 ms total)
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
         
         self._is_running = False
         self._single_done = False
         self._thread: Optional[threading.Thread] = None
         
-        self.ad3 = DirectAD3Wavegen()
+        # Bind directly to unified AD3 signal generator
+        if self.overlay and hasattr(self.overlay, "wavegen"):
+            self.ad3 = self.overlay.wavegen
+        else:
+            self.ad3 = AD3SignalGenerator()
 
         if self.overlay and hasattr(self.overlay, "trigger"):
             self.trigger = self.overlay.trigger
@@ -390,31 +311,36 @@ class OscilloscopeDashboard:
         self.trig_level_input = widgets.BoundedFloatText(value=1.65, min=0.0, max=3.3, step=0.05, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
-        # 3. Channel 1 Controls (W1 -> A0)
+        # 3. Channel 1 Controls (W1 -> A0, 10 Hz to 1 MHz)
         self.ch1_shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Sine", description="CH1 (A0):", layout=widgets.Layout(width="180px"))
         self.ch1_amp_slider = widgets.FloatSlider(value=1.0, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px"))
         self.ch1_amp_input = widgets.BoundedFloatText(value=1.0, min=0.1, max=1.5, step=0.1, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.ch1_amp_slider, "value"), (self.ch1_amp_input, "value"))
-        self.ch1_freq_slider = widgets.IntSlider(value=1000, min=50, max=10000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.ch1_freq_input = widgets.BoundedIntText(value=1000, min=50, max=10000, step=50, layout=widgets.Layout(width="95px"))
+        self.ch1_freq_slider = widgets.IntSlider(value=25000, min=10, max=1000000, step=100, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.ch1_freq_input = widgets.BoundedIntText(value=25000, min=10, max=1000000, step=100, layout=widgets.Layout(width="100px"))
         widgets.jslink((self.ch1_freq_slider, "value"), (self.ch1_freq_input, "value"))
 
-        # 4. Channel 2 Controls (W2 -> A1)
+        # 4. Channel 2 Controls (W2 -> A1, 10 Hz to 1 MHz)
         self.ch2_shape_dd = widgets.Dropdown(options=["Sine", "Triangle", "Square"], value="Square", description="CH2 (A1):", layout=widgets.Layout(width="180px"))
         self.ch2_amp_slider = widgets.FloatSlider(value=1.0, min=0.1, max=1.5, step=0.1, description="Amp (V):", continuous_update=False, layout=widgets.Layout(width="200px"))
         self.ch2_amp_input = widgets.BoundedFloatText(value=1.0, min=0.1, max=1.5, step=0.1, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.ch2_amp_slider, "value"), (self.ch2_amp_input, "value"))
-        self.ch2_freq_slider = widgets.IntSlider(value=2500, min=50, max=10000, step=50, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
-        self.ch2_freq_input = widgets.BoundedIntText(value=2500, min=50, max=10000, step=50, layout=widgets.Layout(width="95px"))
+        self.ch2_freq_slider = widgets.IntSlider(value=60000, min=10, max=1000000, step=100, description="Freq (Hz):", continuous_update=False, layout=widgets.Layout(width="280px"))
+        self.ch2_freq_input = widgets.BoundedIntText(value=60000, min=10, max=1000000, step=100, layout=widgets.Layout(width="100px"))
         widgets.jslink((self.ch2_freq_slider, "value"), (self.ch2_freq_input, "value"))
 
-        # 5. FFT Controls
+        # 5. FFT Controls (Wideband 250 kHz Nyquist)
         self.fft_unit_dd = widgets.Dropdown(options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px"))
-        self.fft_span_dd = widgets.Dropdown(options=[("Full (25 kHz)", 25000), ("8 kHz (Audio)", 8000), ("2 kHz (Bass Zoom)", 2000)], value=8000, description="Span / Zoom:", layout=widgets.Layout(width="210px"))
+        self.fft_span_dd = widgets.Dropdown(
+            options=[("Full Nyquist (250 kHz)", 250000), ("Audio Band (25 kHz)", 25000), ("Bass Sub-Band (5 kHz)", 5000)],
+            value=250000,
+            description="Span / Zoom:",
+            layout=widgets.Layout(width="230px")
+        )
 
     def _build_plots(self):
         t_ms = np.linspace(0, self.total_duration_ms, self.num_pts_per_ch - 16)
-        initial_freq = np.linspace(0, 25000, len(t_ms) // 2 + 1)
+        initial_freq = np.linspace(0, 250000, len(t_ms) // 2 + 1)
 
         # Tab 1: Dual Scope
         self.fig_dual_scope = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
@@ -434,13 +360,13 @@ class OscilloscopeDashboard:
             subplot_titles=("<b>Channel 1: A0 Spectrum (FFT)</b>", "<b>Channel 2: A1 Spectrum (FFT)</b>"))
         self.fig_dual_fft = go.FigureWidget(self.fig_dual_fft)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 FFT", row=1, col=1)
-        self.fig_dual_fft.add_scatter(x=[1000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
+        self.fig_dual_fft.add_scatter(x=[25000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 FFT", row=2, col=1)
-        self.fig_dual_fft.add_scatter(x=[2500], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
+        self.fig_dual_fft.add_scatter(x=[60000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
         self.fig_dual_fft.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t2")
         self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=1, col=1)
         self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_dual_fft.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_dual_fft.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab 3: Channel 1 View
         self.fig_ch1_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
@@ -452,7 +378,7 @@ class OscilloscopeDashboard:
         self.fig_ch1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t3")
         self.fig_ch1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch1_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch1_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_ch1_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         # Tab 4: Channel 2 View
         self.fig_ch2_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
@@ -464,7 +390,7 @@ class OscilloscopeDashboard:
         self.fig_ch2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t4")
         self.fig_ch2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_ch2_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch2_view.update_xaxes(range=[0, 8000], title="Frequency (Hz)", row=2, col=1)
+        self.fig_ch2_view.update_xaxes(range=[0, 250000], title="Frequency (Hz)", row=2, col=1)
 
         self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_ch1_view, self.fig_ch2_view])
         self.tabs.set_title(0, "📈 Dual Scope (A0 & A1)")
@@ -543,11 +469,17 @@ class OscilloscopeDashboard:
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
 
-        # Initialize XADC sequencer
+        # Initialize XADC continuous sequence
         if hasattr(self.overlay, "xadc_wiz_0"):
             self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # Set Scope Mode (M=1 Decimation Bypass, 500 kSPS)
+        if self.overlay and hasattr(self.overlay, "set_profile"):
+            self.overlay.set_profile("oscilloscope")
+        elif trig:
+            trig.set_decimation(1)
 
         # Reset DMA 0
         dma_time.mmio.write(0x30, 0x04)
@@ -555,16 +487,19 @@ class OscilloscopeDashboard:
         dma_time.recvchannel.start()
 
         if trig:
-            trig.mmio.write(0x0C, 5000000)  # 50ms Auto-Timeout
+            trig.mmio.write(0x0C, 5000000)
             self._update_trig_level()
 
         # Start AD3 Wavegen
-        self.ad3.start()
+        self.ad3.start(
+            shape=self.ch1_shape_dd.value, frequency=self.ch1_freq_slider.value, amplitude=self.ch1_amp_slider.value,
+            ch2_shape=self.ch2_shape_dd.value, ch2_frequency=self.ch2_freq_slider.value, ch2_amplitude=self.ch2_amp_slider.value
+        )
         time.sleep(0.5)
 
         buf_time = allocate(shape=(self.packet_size,), dtype="u2")
         dma_armed = False
-        print(f"[Dashboard] Active (50 kSPS Audio Stream | 40.96 ms Window)")
+        print(f"[Dashboard] Active (500 kSPS Simultaneous Scope Stream | {self.total_duration_ms:.3f} ms Window)")
 
         try:
             while self._is_running:
@@ -599,8 +534,8 @@ class OscilloscopeDashboard:
                     mag_a1 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a1)) / (n / 2.0), 1e-6))
 
                     vpp1, vpp2 = float(np.ptp(p_v1)), float(np.ptp(p_v2))
-                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=20.0)
-                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=20.0)
+                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=50.0)
+                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=50.0)
 
                     trig_v = float(self.trig_level_slider.value)
                     is_falling = (self.trig_edge_dd.value == "Falling")
@@ -608,27 +543,25 @@ class OscilloscopeDashboard:
                     active_tab = self.tabs.selected_index
                     max_span = float(self.fft_span_dd.value)
 
-                    # 1. Sub-sample Phase Lock: Find exact trigger edge in active channel
+                    # Sub-sample Phase Lock
                     trig_src_sig = p_v1 if is_trig_a0 else p_v2
                     edge_offset = self._find_trigger_edge(trig_src_sig, trig_v, is_falling)
 
-                    # 2. Dynamic 5-Period Auto-Range Timebase
+                    # Dynamic 5-Period Auto-Range Timebase
                     active_f0 = p_f1 if is_trig_a0 else p_f2
-                    if self.autorange_toggle.value and active_f0 > 30.0:
+                    if self.autorange_toggle.value and active_f0 > 50.0:
                         period_ms = 1000.0 / active_f0
-                        show_duration_ms = min(self.total_duration_ms, max(1.5, 5.0 * period_ms))
+                        show_duration_ms = min(self.total_duration_ms, max(0.01, 5.0 * period_ms))
                         show_pts = int((show_duration_ms / 1000.0) * self.fs_per_ch)
-                        show_pts = max(30, min(show_pts, len(p_v1) - edge_offset))
+                        show_pts = max(16, min(show_pts, len(p_v1) - edge_offset))
                     else:
                         show_pts = len(p_v1) - edge_offset
                         show_duration_ms = (show_pts / self.fs_per_ch) * 1000.0
 
-                    # Slice precisely starting at the trigger edge
                     plot_v1 = p_v1[edge_offset : edge_offset + show_pts]
                     plot_v2 = p_v2[edge_offset : edge_offset + show_pts]
                     t_ms = np.linspace(0, show_duration_ms, len(plot_v1))
 
-                    # Update Active Tab
                     if active_tab == 0:  # Tab 1: Dual Scope
                         with self.fig_dual_scope.batch_update():
                             self.fig_dual_scope.data[0].x = t_ms
@@ -652,12 +585,12 @@ class OscilloscopeDashboard:
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
                             self.fig_dual_fft.data[1].x = [p_f1]
-                            self.fig_dual_fft.data[1].y = [mag_a0[p_idx1]]
+                            self.fig_dual_fft.data[1].y = [p_m1]
                             self.fig_dual_fft.data[1].text = [f" {p_f1:.1f} Hz"]
                             self.fig_dual_fft.data[2].x = freqs
                             self.fig_dual_fft.data[2].y = mag_a1
                             self.fig_dual_fft.data[3].x = [p_f2]
-                            self.fig_dual_fft.data[3].y = [mag_a1[p_idx2]]
+                            self.fig_dual_fft.data[3].y = [p_m2]
                             self.fig_dual_fft.data[3].text = [f" {p_f2:.1f} Hz"]
                             self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
 
@@ -675,7 +608,7 @@ class OscilloscopeDashboard:
                     elif active_tab == 3:  # Tab 4: CH2 View
                         with self.fig_ch2_view.batch_update():
                             self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = p_v2
+                            self.fig_ch2_view.data[0].y = plot_v2
                             self.fig_ch2_view.data[1].x = [0, show_duration_ms]
                             self.fig_ch2_view.data[1].y = [trig_v, trig_v]
                             self.fig_ch2_view.data[2].x = freqs
@@ -845,7 +778,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.3.0-rc1"
+                "version": "v1.5.0"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -884,7 +817,7 @@ class HardwareLoader:
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.3.0-rc1")
+        target_version = version or config.get("version", "v1.5.0")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
@@ -976,7 +909,12 @@ if __name__ == "__main__":
 xadc_dma.py:
 
 ```python
-from typing import Tuple
+"""
+pynq_oscilloscope.xadc_dma: High-level driver for XADC AXI-Stream & AXI DMA data acquisition.
+Supports Single-Channel (A0) and Simultaneous Dual-Channel (A0 & A1) streaming with persistent buffer pooling.
+"""
+
+from typing import Tuple, Optional
 import numpy as np
 from pynq import allocate
 
@@ -996,15 +934,25 @@ class StreamingXADC:
                 raise RuntimeError("No AXI DMA block found in the loaded hardware overlay.")
             self.dma = getattr(overlay, dma_blocks[0])
 
-        self.packet_size = default_packet_size
-        self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
+        self.packet_size = int(default_packet_size)
+        self._buffer: Optional[object] = allocate(shape=(self.packet_size,), dtype="u2")
+
+    def resize_buffer(self, new_packet_size: int):
+        """Safely re-allocates the persistent CMA buffer if packet size changes."""
+        if new_packet_size != self.packet_size or self._buffer is None:
+            self.close()
+            self.packet_size = int(new_packet_size)
+            self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
 
     def capture_stereo(self, crop_startup_samples: int = 0) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Captures simultaneous interleaved stereo samples from XADC via DMA.
+        Captures simultaneous interleaved stereo samples from XADC via DMA into the persistent buffer.
         
         :return: (voltages_ch1_a0, voltages_ch2_a1) arrays of length packet_size / 2.
         """
+        if self._buffer is None:
+            self._buffer = allocate(shape=(self.packet_size,), dtype="u2")
+
         # 1. Trigger DMA transfer
         self.dma.recvchannel.transfer(self._buffer)
         self.dma.recvchannel.wait()
@@ -1019,7 +967,7 @@ class StreamingXADC:
         voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
         voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
         
-        if crop_startup_samples > 0:
+        if crop_startup_samples > 0 and len(voltages_ch1) > (2 * crop_startup_samples):
             voltages_ch1 = voltages_ch1[crop_startup_samples:]
             voltages_ch2 = voltages_ch2[crop_startup_samples:]
             
@@ -1347,8 +1295,8 @@ class AD3SignalGenerator:
     def has_device(self) -> bool:
         """Checks if an AD3 / Digilent device is physically connected to the USB bus."""
         try:
-            self.dwf.deviceEnum.enumerateDevices()
-            return self.dwf.deviceEnum.count() > 0
+            num_dev = self.dwf.deviceEnum.enumerateDevices()
+            return num_dev > 0
         except Exception:
             return False
 
@@ -1499,7 +1447,7 @@ hw_trigger.py:
 ```python
 """
 pynq_oscilloscope.hw_trigger: High-level driver for the FPGA-based 'axis_trigger_unit' IP.
-Acts as the central Timing & Configuration Controller for Triggering, Decimation, and FFT length.
+Acts as the central Timing & Configuration Controller for Triggering, Decimation, FFT channel routing, and FFT length.
 """
 
 from typing import Union, Optional, Tuple
@@ -1511,8 +1459,8 @@ class HardwareTrigger:
     High-level Python driver for the FPGA-based 'axis_trigger_unit' IP.
     
     Interfaces via AXI4-Lite registers to configure hardware-level edge detection,
-    trigger channel source selection (CH1/A0 vs CH2/A1), voltage thresholds,
-    decimation factors (M=1, 10, 20, 50), FFT transform length (N=512, 1024, 2048),
+    trigger channel source selection (CH1/A0 vs CH2/A1), FFT channel routing (A0 vs A1),
+    voltage thresholds, decimation factors (M=1, 10, 20, 50), FFT transform length (N=512, 1024, 2048),
     and packetizer boundaries.
     """
 
@@ -1523,18 +1471,19 @@ class HardwareTrigger:
     REG_TIMEOUT     = 0x0C
     REG_HYSTERESIS  = 0x10
     REG_DECIMATION  = 0x14  # [1:0] 00=M=1, 01=M=10, 10=M=20, 11=M=50
-    REG_FFT_CONFIG  = 0x18  # [15:0] (NFFT << 8) | FWD_INV
+    REG_FFT_CONFIG  = 0x18  # [15:0] (FWD_INV << 8) | NFFT (PG109 Format)
     REG_PACKET_SIZE = 0x1C  # [15:0] Samples per DMA frame
 
-    # Bit masks for REG_CONTROL
+    # Bit masks for REG_CONTROL (0x00)
     BIT_ARM          = 1 << 0  # Bit 0: Arm trigger unit
     BIT_AUTO_MODE    = 1 << 1  # Bit 1: 1 = Auto Mode, 0 = Normal Mode
     BIT_EDGE_FALLING = 1 << 2  # Bit 2: 0 = Rising Edge, 1 = Falling Edge
     BIT_SINGLE_SHOT  = 1 << 3  # Bit 3: 1 = Single Shot, 0 = Continuous
     BIT_FORCE_TRIG   = 1 << 4  # Bit 4: Software force trigger pulse
     BIT_TRIG_SRC_CH2 = 1 << 5  # Bit 5: 0 = Trigger on CH1 (A0), 1 = Trigger on CH2 (A1)
+    BIT_FFT_SRC_CH2  = 1 << 6  # Bit 6: 0 = Route CH1 (A0) to FFT, 1 = Route CH2 (A1) to FFT
 
-    # Bit masks for REG_STATUS
+    # Bit masks for REG_STATUS (0x04)
     STATUS_ARMED     = 1 << 0
     STATUS_TRIGGERED = 1 << 1
     STATUS_STREAMING = 1 << 2
@@ -1564,7 +1513,7 @@ class HardwareTrigger:
         else:
             self.mmio = MMIO(0x43C10000, 65536)
 
-        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, CH1 (A0), M=10, N=2048
+        # Apply default state: 1.65V Threshold, Auto Mode, Rising Edge, CH1 (A0), M=10, N=2048, FFT on CH1
         self.configure(
             mode="Auto",
             edge="Rising",
@@ -1573,6 +1522,7 @@ class HardwareTrigger:
             timeout_ms=50.0,
             hysteresis_volts=0.02
         )
+        self.set_fft_channel("CH1")
 
     # =========================================================================
     # 1. Trigger & Acquisition Settings
@@ -1609,6 +1559,25 @@ class HardwareTrigger:
         """Read active trigger source channel from hardware."""
         ctrl = self.mmio.read(self.REG_CONTROL)
         return "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
+
+    def set_fft_channel(self, source: str = "CH1"):
+        """
+        Configures the hardware stream demux routing to the FFT core (xfft_0).
+        
+        :param source: 'CH1' (A0) or 'CH2' (A1).
+        """
+        src_clean = source.strip().upper()
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        if "CH2" in src_clean or "A1" in src_clean:
+            ctrl |= self.BIT_FFT_SRC_CH2
+        else:
+            ctrl &= ~self.BIT_FFT_SRC_CH2
+        self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def get_fft_channel(self) -> str:
+        """Read the active channel routed to the hardware FFT core."""
+        ctrl = self.mmio.read(self.REG_CONTROL)
+        return "CH2 (A1)" if (ctrl & self.BIT_FFT_SRC_CH2) else "CH1 (A0)"
 
     def set_mode(self, mode: str):
         """Set trigger operating mode: 'Auto', 'Normal', or 'Single'."""
@@ -1685,7 +1654,7 @@ class HardwareTrigger:
         self.mmio.write(self.REG_CONTROL, ctrl | self.BIT_FORCE_TRIG)
 
     # =========================================================================
-    # 2. Phase 2.5 Runtime Timing & Multi-Regime Controls
+    # 2. Runtime Timing & Multi-Regime Controls
     # =========================================================================
 
     def set_decimation(self, factor: int):
@@ -1707,6 +1676,9 @@ class HardwareTrigger:
     def set_fft_config(self, n_points: int = 2048, forward: bool = True):
         """
         Dynamically configures the Xilinx LogiCORE FFT core via the 16-bit s_axis_config bus.
+        Following PG109 format:
+          • Byte 0 (bits [4:0]): NFFT transform length exponent
+          • Byte 1 (bit [8]): FWD_INV (1 = Forward FFT, 0 = Inverse FFT)
         
         :param n_points: Transform length (supported: 512, 1024, 2048).
         :param forward: True for Forward FFT, False for Inverse FFT (IFFT).
@@ -1718,21 +1690,21 @@ class HardwareTrigger:
         nfft = valid_sizes[n_points]
         fwd_bit = 1 if forward else 0
         
-        # 16-bit configuration word: Byte 1 = NFFT, Byte 0 = FWD_INV
-        config_word = (nfft << 8) | fwd_bit
+        # PG109: Byte 0 = NFFT (bits [4:0]), Byte 1 = FWD_INV (bit [8])
+        config_word = (fwd_bit << 8) | nfft
         self.mmio.write(self.REG_FFT_CONFIG, config_word)
 
     def get_fft_length(self) -> int:
         """Reads active FFT transform length N from hardware register."""
         raw = self.mmio.read(self.REG_FFT_CONFIG)
-        nfft = (raw >> 8) & 0x1F
+        nfft = raw & 0x1F  # NFFT is in Byte 0 (bits [4:0])
         return 2 ** nfft
 
     def set_packet_size(self, size_samples: int):
         """
         Configures the hardware TLAST packetizer limit.
         
-        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048).
+        :param size_samples: Number of samples per DMA frame (e.g. 512, 1024, 2048, 4096).
         """
         clamped = max(64, min(65535, int(size_samples)))
         self.mmio.write(self.REG_PACKET_SIZE, clamped)
@@ -1756,20 +1728,21 @@ class HardwareTrigger:
     def __repr__(self) -> str:
         ctrl = self.mmio.read(self.REG_CONTROL)
         src = "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
+        fft_src = "CH2 (A1)" if (ctrl & self.BIT_FFT_SRC_CH2) else "CH1 (A0)"
         edge = "Falling" if (ctrl & self.BIT_EDGE_FALLING) else "Rising"
         mode = "Auto" if (ctrl & self.BIT_AUTO_MODE) else ("Single" if (ctrl & self.BIT_SINGLE_SHOT) else "Normal")
         armed = "ARMED" if (ctrl & self.BIT_ARM) else "DISARMED"
         m = self.get_decimation()
         n = self.get_fft_length()
         pkt = self.get_packet_size()
-        return f"<HardwareTrigger: {armed}, Src={src}, Mode={mode}, Edge={edge}, M={m}x, N={n}, Pkt={pkt}>"```
+        return f"<HardwareTrigger: {armed}, TrigSrc={src}, FFTSrc={fft_src}, Mode={mode}, Edge={edge}, M={m}x, N={n}, Pkt={pkt}>"```
 
 overlay.py:
 
 ```python
 """
 pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
-Features runtime profile switching (Lab Scope, Audio, Speech, Bass Zoom), non-blocking DMA polling, and Jupyter audio playback.
+Features runtime profile switching, persistent zero-copy CMA buffer pooling, simultaneous sampling, and Jupyter audio playback.
 """
 
 from pathlib import Path
@@ -1785,6 +1758,7 @@ from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
 from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
+from pynq_oscilloscope.analytic_dashboard import AcousticAnalyticDashboard
 
 
 class OscilloscopeOverlay(Overlay):
@@ -1818,6 +1792,9 @@ class OscilloscopeOverlay(Overlay):
         self.fft_points = fft_points
         self.current_profile = "audio"
         self.fs_per_ch = 50_000.0
+
+        # Persistent CMA Buffer Pool (Zero-Copy)
+        self._buf_time = allocate(shape=(self.packet_size,), dtype="u2")
         
         self.trigger = HardwareTrigger(self)
         self.xadc = StreamingXADC(self, default_packet_size=packet_size)
@@ -1858,13 +1835,22 @@ class OscilloscopeOverlay(Overlay):
         self.trigger.set_fft_config(n_points=n_val, forward=True)
         self.trigger.set_packet_size(pkt_val)
 
-        # 2. Update Driver State
+        # 2. Re-allocate persistent CMA buffer ONLY if packet size changed
+        if self._buf_time is None or len(self._buf_time) != pkt_val:
+            if self._buf_time is not None:
+                try:
+                    self._buf_time.close()
+                except Exception:
+                    pass
+            self._buf_time = allocate(shape=(pkt_val,), dtype="u2")
+
+        # 3. Update Driver State
         self.current_profile = mode_clean
         self.packet_size = pkt_val
         self.fft_points = n_val
         self.fs_per_ch = 500_000.0 / m_val
 
-        # 3. Update FFT Grid
+        # 4. Update FFT Grid
         self.fft.fft_points = n_val
         self.fft.num_bins = n_val // 2
         self.fft.sample_rate_hz = self.fs_per_ch
@@ -1896,7 +1882,7 @@ class OscilloscopeOverlay(Overlay):
         }
 
     # =========================================================================
-    # 2. Synchronized Audio & Stereo Capture (Hardened Non-Blocking Polling)
+    # 2. Synchronized Audio & Stereo Capture (Persistent Zero-Copy DMA)
     # =========================================================================
 
     def capture_stereo(
@@ -1906,22 +1892,21 @@ class OscilloscopeOverlay(Overlay):
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        with non-blocking timeout polling.
+        using the persistent pre-allocated CMA buffer pool and simultaneous XADC conversion.
         """
-        # 1. Initialize XADC continuous sequence
+        # 1. Initialize XADC into Continuous Sequence Mode on Vaux1 and Vaux9
         if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41 = Continuous Sequence Mode
-            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48 = Disable internal channels
-            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49 = Enable Vaux1 & Vaux9
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41: Continuous Sequence Mode
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48: Disable internal channels
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49: Enable Vaux1 (A0) & Vaux9 (A1)
 
-        # 2. Reset DMA 0
+        # 2. Reset DMA 0 channel
         self.axi_dma_0.mmio.write(0x30, 0x04)
-        time.sleep(0.005)
+        time.sleep(0.002)
         self.axi_dma_0.recvchannel.start()
 
-        # 3. Queue receive buffer
-        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
-        self.axi_dma_0.recvchannel.transfer(buf_time)
+        # 3. Queue persistent receive buffer
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
 
         # 4. Arm Hardware Trigger
         self.trigger.arm()
@@ -1930,7 +1915,7 @@ class OscilloscopeOverlay(Overlay):
         start = time.time()
         while time.time() - start < timeout:
             if self.axi_dma_0.recvchannel.idle:
-                raw_samples = np.array(buf_time)
+                raw_samples = np.array(self._buf_time)
                 
                 # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
                 raw_ch1 = raw_samples[0::2]
@@ -1944,11 +1929,9 @@ class OscilloscopeOverlay(Overlay):
                     voltages_ch1 = voltages_ch1[crop_startup_samples:-crop_startup_samples]
                     voltages_ch2 = voltages_ch2[crop_startup_samples:-crop_startup_samples]
 
-                buf_time.close()
                 return voltages_ch1, voltages_ch2
-            time.sleep(0.01)
+            time.sleep(0.005)
 
-        buf_time.close()
         raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or mode.")
 
     def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
@@ -1956,9 +1939,71 @@ class OscilloscopeOverlay(Overlay):
         v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
         return v_ch1
 
-    def capture_fft(self, unit: str = "dBV") -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware decimated audio FFT spectrum from Channel 1."""
-        return self.fft.capture_spectrum(unit=unit)
+    def capture_fft(self, unit: str = "dBV", timeout: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures hardware single-channel FFT spectrum from the active channel selected in trigger
+        using non-blocking DMA synchronization.
+        """
+        # 1. Initialize XADC sequencer (0x2000)
+        if hasattr(self, "xadc_wiz_0"):
+            self.xadc_wiz_0.mmio.write(0x304, 0x2000)
+            self.xadc_wiz_0.mmio.write(0x320, 0x0000)
+            self.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # 2. Match FFT transform length to demuxed channel frame size (N = packet_size / 2)
+        fft_pts = self.packet_size // 2
+        self.trigger.set_fft_config(n_points=fft_pts, forward=True)
+
+        # 3. Reset and start both DMA channels
+        self.axi_dma_0.mmio.write(0x30, 0x04)
+        self.axi_dma_1.mmio.write(0x30, 0x04)
+        time.sleep(0.002)
+        self.axi_dma_0.recvchannel.start()
+        self.axi_dma_1.recvchannel.start()
+
+        # 4. Queue receive buffers
+        buf_fft = allocate(shape=(fft_pts,), dtype="u2")
+        self.axi_dma_0.recvchannel.transfer(self._buf_time)
+        self.axi_dma_1.recvchannel.transfer(buf_fft)
+
+        # 5. Arm Hardware Trigger
+        self.trigger.arm()
+
+        # 6. Non-blocking poll with timeout
+        start = time.time()
+        ok = False
+        while time.time() - start < timeout:
+            if self.axi_dma_1.recvchannel.idle:
+                ok = True
+                break
+            time.sleep(0.005)
+
+        if not ok:
+            buf_fft.close()
+            raise TimeoutError(f"PL FFT capture timed out after {timeout} seconds.")
+
+        raw_fft = np.array(buf_fft, copy=True)
+        buf_fft.close()
+
+        # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
+        num_bins = fft_pts // 2
+        raw_half = raw_fft[:num_bins].astype(np.float64)
+
+        # Calibrated CORDIC fixed-point magnitude
+        linear_volts = (raw_half / 32768.0) * 3.3
+
+        unit_clean = unit.strip().upper()
+        if unit_clean == "DBV":
+            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
+        elif unit_clean == "DBFS":
+            mags = 20.0 * np.log10(np.maximum(raw_half / 32768.0, 1e-6))
+        else:
+            mags = linear_volts * 1000.0
+
+        delta_f = self.fs_per_ch / float(fft_pts)
+        freqs = np.arange(num_bins) * delta_f
+
+        return freqs, mags
 
     # =========================================================================
     # 3. Jupyter Audio Playback
@@ -1992,7 +2037,7 @@ class OscilloscopeOverlay(Overlay):
     # =========================================================================
 
     def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard."""
+        """Launches the general Oscilloscope Dashboard with AD3 integration."""
         dash = OscilloscopeDashboard(
             overlay=self,
             packet_size=self.packet_size,
@@ -2001,6 +2046,13 @@ class OscilloscopeOverlay(Overlay):
         )
         dash.display()
         return dash
+
+    def ad3_dashboard(self, display_window: int = 1024):
+        """
+        Flagship Academic AD3 Laboratory Oscilloscope & Waveform Analyzer.
+        Features 10 Hz - 1 MHz signal generator controls and live aliasing exploration.
+        """
+        return self.dashboard(display_window=display_window)
 
     def audio_dashboard(self):
         """Launches the dedicated Audio & Microphone Dashboard."""
@@ -2012,7 +2064,23 @@ class OscilloscopeOverlay(Overlay):
         dash.display()
         return dash
 
+    def analytic_dashboard(self):
+        """Launches the dedicated Real-Time Acoustic Analytics & Spectrogram Dashboard."""
+        dash = AcousticAnalyticDashboard(
+            overlay=self,
+            packet_size=self.packet_size,
+            fs_per_ch=self.fs_per_ch
+        )
+        dash.display()
+        return dash
+
     def close(self):
+        if hasattr(self, "_buf_time") and self._buf_time is not None:
+            try:
+                self._buf_time.close()
+                self._buf_time = None
+            except Exception:
+                pass
         if hasattr(self, "xadc") and self.xadc is not None:
             self.xadc.close()
         if hasattr(self, "fft") and self.fft is not None:
@@ -2028,6 +2096,626 @@ class OscilloscopeOverlay(Overlay):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()```
+
+analytics.py:
+
+```python
+"""
+pynq_oscilloscope.analytics: High-Precision Signal Processing & Acoustic Analytics Engine.
+Provides Hilbert analytic envelope extraction, Short-Time Energy (STE), Inter-aural Level Difference (ILD),
+sliding STFT spectrograms, sub-Hertz pitch interpolation, and instantaneous phase tracking.
+"""
+
+from typing import Tuple, Optional, Union
+import numpy as np
+
+
+class AcousticAnalytics:
+    """
+    High-performance, zero-copy acoustic signal analytics engine.
+    Provides mathematical extraction for Amplitude vs. Time and Frequency vs. Time metrics.
+    """
+
+    @staticmethod
+    def hilbert_transform(x: np.ndarray) -> np.ndarray:
+        """
+        Computes the analytic signal z[n] = x[n] + j*H{x[n]} using pure NumPy FFT.
+        
+        :param x: 1D real-valued signal.
+        :return: 1D complex-valued analytic signal.
+        """
+        x_arr = np.asarray(x, dtype=np.float64)
+        n = len(x_arr)
+        if n == 0:
+            return np.array([], dtype=np.complex128)
+
+        xf = np.fft.fft(x_arr)
+        h = np.zeros(n, dtype=np.float64)
+
+        if n % 2 == 0:
+            h[0] = 1.0
+            h[n // 2] = 1.0
+            h[1 : n // 2] = 2.0
+        else:
+            h[0] = 1.0
+            h[1 : (n + 1) // 2] = 2.0
+
+        return np.fft.ifft(xf * h)
+
+    @classmethod
+    def extract_analytic_envelope(
+        cls,
+        signal: np.ndarray,
+        remove_dc: bool = True
+    ) -> np.ndarray:
+        """
+        Extracts the true physical instantaneous amplitude envelope A(t) = |z(t)|.
+        
+        :param signal: 1D physical voltage array.
+        :param remove_dc: Automatically subtract mean DC baseline before envelope extraction.
+        :return: 1D instantaneous amplitude envelope array of same length.
+        """
+        x = np.asarray(signal, dtype=np.float64)
+        if remove_dc:
+            x = x - np.mean(x)
+            
+        analytic_signal = cls.hilbert_transform(x)
+        return np.abs(analytic_signal)
+
+    @staticmethod
+    def compute_short_time_energy(
+        signal: np.ndarray,
+        window_len: int = 64,
+        hop_size: int = 16
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Computes the Short-Time Energy (STE) profile: E[m] = sum(x[n]^2 * w[n]).
+        
+        :param signal: 1D voltage array.
+        :param window_len: Number of samples per energy integration window.
+        :param hop_size: Step size between successive energy windows.
+        :return: (ste_curve, sample_indices).
+        """
+        x = np.asarray(signal, dtype=np.float64)
+        x_ac = x - np.mean(x)
+        x_sq = x_ac ** 2
+
+        n_samples = len(x_sq)
+        if n_samples < window_len:
+            return np.array([np.mean(x_sq)]), np.array([0])
+
+        indices = np.arange(0, n_samples - window_len + 1, hop_size)
+        win = np.hanning(window_len)
+        win_norm = win / np.sum(win)
+
+        ste = np.array([
+            np.sum(x_sq[idx : idx + window_len] * win_norm)
+            for idx in indices
+        ])
+        return ste, indices + (window_len // 2)
+
+    @classmethod
+    def compute_ild(
+        cls,
+        sig_a0: np.ndarray,
+        sig_a1: np.ndarray,
+        window_len: int = 64,
+        hop_size: int = 16,
+        eps: float = 1e-9
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Computes the Inter-aural Level Difference (ILD) in decibels:
+        Delta_L(t) = 10 * log10( (STE_A0(t) + eps) / (STE_A1(t) + eps) )
+        
+        :param sig_a0: Channel 1 (A0) voltage array.
+        :param sig_a1: Channel 2 (A1) voltage array.
+        :return: (ild_db, ste_a0, ste_a1, sample_indices).
+        """
+        ste_0, idx0 = cls.compute_short_time_energy(sig_a0, window_len=window_len, hop_size=hop_size)
+        ste_1, _ = cls.compute_short_time_energy(sig_a1, window_len=window_len, hop_size=hop_size)
+
+        ild_db = 10.0 * np.log10(np.maximum(ste_0, eps) / np.maximum(ste_1, eps))
+        return ild_db, ste_0, ste_1, idx0
+
+    @classmethod
+    def compute_instantaneous_phase_diff(
+        cls,
+        sig_a0: np.ndarray,
+        sig_a1: np.ndarray,
+        remove_dc: bool = True
+    ) -> np.ndarray:
+        """
+        Computes continuous instantaneous phase difference between A0 and A1:
+        Delta_phi(t) = unwrap( angle(z_A0(t)) - angle(z_A1(t)) ) in degrees.
+        
+        :return: 1D phase difference array in degrees (-180° to +180° wrapped or continuous).
+        """
+        x0 = np.asarray(sig_a0, dtype=np.float64)
+        x1 = np.asarray(sig_a1, dtype=np.float64)
+        if remove_dc:
+            x0 = x0 - np.mean(x0)
+            x1 = x1 - np.mean(x1)
+
+        z0 = cls.hilbert_transform(x0)
+        z1 = cls.hilbert_transform(x1)
+
+        phi0 = np.unwrap(np.angle(z0))
+        phi1 = np.unwrap(np.angle(z1))
+
+        diff_deg = np.rad2deg(phi0 - phi1)
+        # Normalize within [-180, +180] band
+        return (diff_deg + 180.0) % 360.0 - 180.0
+
+    @staticmethod
+    def compute_sliding_stft(
+        signal: np.ndarray,
+        fs: float,
+        nperseg: int = 512,
+        noverlap: int = 384,
+        window: str = "blackmanharris"
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Computes a 2D Short-Time Fourier Transform (STFT) Spectrogram matrix.
+        
+        :param signal: 1D physical voltage array.
+        :param fs: Sampling frequency in Hz.
+        :param nperseg: Number of samples per FFT window segment (e.g., 512, 1024).
+        :param noverlap: Number of overlapping samples (default 75% overlap).
+        :param window: Window type ('hann', 'hamming', 'blackmanharris').
+        :return: (time_axis_ms, freq_axis_hz, spectrogram_dBV_matrix).
+        """
+        x = np.asarray(signal, dtype=np.float64)
+        x_ac = x - np.mean(x)
+        n_samples = len(x_ac)
+
+        step = nperseg - noverlap
+        if n_samples < nperseg or step <= 0:
+            freqs = np.fft.rfftfreq(n_samples, d=1.0 / fs)
+            spec = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(x_ac)) / (n_samples / 2.0), 1e-6))
+            return np.array([0.0]), freqs, spec[:, np.newaxis]
+
+        # Generate window
+        if window == "blackmanharris":
+            n = np.arange(nperseg)
+            w = (0.35875 - 0.48829 * np.cos(2.0 * np.pi * n / (nperseg - 1)) +
+                 0.14128 * np.cos(4.0 * np.pi * n / (nperseg - 1)) -
+                 0.01168 * np.cos(6.0 * np.pi * n / (nperseg - 1)))
+        elif window == "hamming":
+            w = np.hamming(nperseg)
+        else:
+            w = np.hanning(nperseg)
+
+        coherent_gain = np.sum(w) / nperseg
+        freqs = np.fft.rfftfreq(nperseg, d=1.0 / fs)
+        indices = np.arange(0, n_samples - nperseg + 1, step)
+        times_ms = (indices + (nperseg / 2.0)) * (1000.0 / fs)
+
+        spec_matrix = np.zeros((len(freqs), len(indices)), dtype=np.float64)
+
+        for i, idx in enumerate(indices):
+            segment = x_ac[idx : idx + nperseg] * w
+            fft_res = np.abs(np.fft.rfft(segment)) / (nperseg / 2.0)
+            linear_v = fft_res / max(coherent_gain, 1e-4)
+            spec_matrix[:, i] = 20.0 * np.log10(np.maximum(linear_v, 1e-6))
+
+        return times_ms, freqs, spec_matrix
+
+    @staticmethod
+    def track_sub_hertz_pitch(
+        freqs: np.ndarray,
+        mags: np.ndarray,
+        min_freq_hz: float = 20.0,
+        max_freq_hz: Optional[float] = None
+    ) -> Tuple[float, float]:
+        """
+        Extracts dominant fundamental pitch frequency with sub-Hertz accuracy (±0.2 Hz)
+        using three-point parabolic interpolation on spectral peaks.
+        
+        :param freqs: 1D frequency axis array in Hz.
+        :param mags: 1D magnitude array in dB.
+        :param min_freq_hz: Minimum frequency threshold to ignore 0 Hz DC bins.
+        :param max_freq_hz: Optional upper band limit.
+        :return: (peak_freq_hz, peak_mag_dB).
+        """
+        valid_mask = (freqs >= min_freq_hz)
+        if max_freq_hz is not None:
+            valid_mask &= (freqs <= max_freq_hz)
+
+        valid_indices = np.where(valid_mask)[0]
+        if len(valid_indices) == 0:
+            k = int(np.argmax(mags))
+            return float(freqs[k]), float(mags[k])
+
+        k = int(valid_indices[np.argmax(mags[valid_indices])])
+
+        # Parabolic peak interpolation
+        if k <= 0 or k >= len(mags) - 1:
+            return float(freqs[k]), float(mags[k])
+
+        alpha = float(mags[k - 1])
+        beta  = float(mags[k])
+        gamma = float(mags[k + 1])
+
+        denom = alpha - 2.0 * beta + gamma
+        if abs(denom) < 1e-12:
+            return float(freqs[k]), float(beta)
+
+        delta = 0.5 * (alpha - gamma) / denom
+        delta = max(-0.5, min(0.5, delta))
+
+        delta_f = float(freqs[1] - freqs[0]) if len(freqs) > 1 else 1.0
+        interp_freq = float(freqs[k] + delta * delta_f)
+        interp_mag = float(beta - 0.25 * (alpha - gamma) * delta)
+
+        return interp_freq, interp_mag```
+
+analytic_dashboard.py:
+
+```python
+"""
+pynq_oscilloscope.analytic_dashboard: Professional Multi-Domain Acoustic Analytics Dashboard.
+Features 3-strip stacked channel isolation, decoupled dual Y-axes, full-width STFT waterfall,
+and live spatial energy balance monitoring.
+"""
+
+import time
+import threading
+from typing import Optional
+from IPython.display import clear_output, display
+import numpy as np
+import ipywidgets as widgets
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from pynq import allocate
+
+from pynq_oscilloscope.analytics import AcousticAnalytics
+from pynq_oscilloscope.hw_trigger import HardwareTrigger
+from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+
+
+class AcousticAnalyticDashboard:
+    """
+    Professional Multi-Domain Acoustic Diagnostic Dashboard.
+    Implements 3-strip dedicated channel grids, dual-axis pitch/phase tracking,
+    and full-width spectrogram rendering.
+    """
+
+    def __init__(
+        self,
+        overlay=None,
+        packet_size: int = 2048,
+        fs_per_ch: float = 50_000.0
+    ):
+        self.overlay = overlay
+        self.packet_size = packet_size
+        self.num_pts_per_ch = packet_size // 2
+        self.fs_per_ch = fs_per_ch
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
+
+        self._is_running = False
+        self._single_done = False
+        self._thread: Optional[threading.Thread] = None
+
+        if self.overlay and hasattr(self.overlay, "wavegen"):
+            self.ad3 = self.overlay.wavegen
+        else:
+            self.ad3 = AD3SignalGenerator()
+
+        if self.overlay and hasattr(self.overlay, "trigger"):
+            self.trigger = self.overlay.trigger
+        elif self.overlay:
+            self.trigger = HardwareTrigger(self.overlay)
+        else:
+            self.trigger = None
+
+        self._build_ui()
+        self._build_plots()
+        self._setup_callbacks()
+
+    def _build_ui(self):
+        # 1. Action Row & Spatial Readouts
+        self.start_btn = widgets.Button(description="Start Live", button_style="success", icon="play", layout=widgets.Layout(width="115px"))
+        self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop", layout=widgets.Layout(width="95px"))
+        self.force_btn = widgets.Button(description="Force Trig", button_style="warning", icon="bolt", layout=widgets.Layout(width="115px"))
+        self.clear_log_btn = widgets.Button(description="Clear Log", button_style="", icon="trash", layout=widgets.Layout(width="100px"))
+
+        self.readout_metrics = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>A0: 0.00V | A1: 0.00V | f0: 0.0Hz | ΔL: +0.0dB | Δϕ: +0.0° | [   ● C   ]</span>")
+
+        # 2. Controls Row
+        self.trig_mode_dd = widgets.Dropdown(options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px"))
+        self.trig_level_slider = widgets.FloatSlider(value=1.65, min=0.0, max=3.3, step=0.05, description="Trig Level:", continuous_update=False, layout=widgets.Layout(width="220px"))
+        self.stft_window_dd = widgets.Dropdown(options=["blackmanharris", "hanning", "hamming"], value="blackmanharris", description="STFT Win:", layout=widgets.Layout(width="200px"))
+        self.profile_dd = widgets.Dropdown(options=[("Audio (50 kSPS)", "audio"), ("Bass Zoom (10 kSPS)", "bass_zoom"), ("Scope (500 kSPS)", "oscilloscope")], value="audio", description="Regime:", layout=widgets.Layout(width="220px"))
+
+    def _build_plots(self):
+        t_ms = np.linspace(0, self.total_duration_ms, self.num_pts_per_ch - 16)
+        initial_freq = np.linspace(0, self.fs_per_ch / 2.0, 128)
+
+        # =====================================================================
+        # Tab 1: 3-Strip Stacked Amplitude & Energy
+        # =====================================================================
+        self.fig_amp_time = make_subplots(
+            rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+            subplot_titles=(
+                "<b>Channel 1: A0 (Voltage & Symmetrical Envelope)</b>",
+                "<b>Channel 2: A1 (Voltage & Symmetrical Envelope)</b>",
+                "<b>Spatial Energy Balance: Inter-aural Level Difference ΔL(t) [dB]</b>"
+            )
+        )
+        self.fig_amp_time = go.FigureWidget(self.fig_amp_time)
+        # Strip 1: CH1 / A0
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="rgba(0, 255, 204, 0.35)", width=1.1), name="A0 Raw (V)", row=1, col=1)
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 +A(t)", row=1, col=1)
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 -A(t)", showlegend=False, row=1, col=1)
+        # Strip 2: CH2 / A1
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="rgba(255, 0, 127, 0.35)", width=1.1), name="A1 Raw (V)", row=2, col=1)
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 +A(t)", row=2, col=1)
+        self.fig_amp_time.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 -A(t)", showlegend=False, row=2, col=1)
+        # Strip 3: ILD Ratio
+        self.fig_amp_time.add_scatter(x=t_ms, y=[0.0]*len(t_ms), mode="lines", line=dict(color="#FFA500", width=1.8), name="ILD ΔL(t) [dB]", row=3, col=1)
+
+        self.fig_amp_time.update_layout(template="plotly_dark", height=560, margin=dict(l=45, r=25, t=40, b=35), uirevision="t1")
+        self.fig_amp_time.update_yaxes(range=[0, 3.3], title="A0 (V)", row=1, col=1)
+        self.fig_amp_time.update_yaxes(range=[0, 3.3], title="A1 (V)", row=2, col=1)
+        self.fig_amp_time.update_yaxes(range=[-25, 25], title="ΔL (dB)", row=3, col=1)
+        self.fig_amp_time.update_xaxes(range=[0, self.total_duration_ms], title="Time (Milliseconds)", row=3, col=1)
+
+        # =====================================================================
+        # Tab 2: Full-Width Spectrogram & Decoupled Pitch/Phase (Dual Y-Axes)
+        # =====================================================================
+        self.fig_freq_time = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.10,
+            specs=[[{}], [{"secondary_y": True}]],
+            subplot_titles=(
+                "<b>Rolling STFT Waterfall Spectrogram (Channel 1 / A0)</b>",
+                "<b>Sub-Hertz Pitch Tracking f0(t) [Right Axis] & Phase Difference Δϕ(t) [Left Axis]</b>"
+            )
+        )
+        self.fig_freq_time = go.FigureWidget(self.fig_freq_time)
+        dummy_z = np.full((128, 30), -90.0)
+        # Heatmap
+        self.fig_freq_time.add_heatmap(
+            z=dummy_z, x=np.linspace(0, self.total_duration_ms, 30), y=initial_freq,
+            colorscale="Turbo", zmin=-85, zmax=0,
+            colorbar=dict(title="dBV", len=0.48, y=0.78), row=1, col=1
+        )
+        # Left Y-Axis: Phase Difference (-180 to +180 deg)
+        self.fig_freq_time.add_scatter(
+            x=[0, self.total_duration_ms], y=[0, 0], mode="lines",
+            line=dict(color="#FFA500", width=1.8, dash="dash"),
+            name="Phase Diff Δϕ(t) [°]", secondary_y=False, row=2, col=1
+        )
+        # Right Y-Axis: Pitch f0 (0 to 25 kHz)
+        self.fig_freq_time.add_scatter(
+            x=[0, self.total_duration_ms], y=[1000, 1000], mode="lines+markers",
+            line=dict(color="#00FFCC", width=2.0),
+            name="Pitch f0(t) [Hz]", secondary_y=True, row=2, col=1
+        )
+
+        self.fig_freq_time.update_layout(template="plotly_dark", height=560, margin=dict(l=45, r=55, t=40, b=35), uirevision="t2")
+        self.fig_freq_time.update_yaxes(range=[0, self.fs_per_ch / 2.0], title="Frequency (Hz)", row=1, col=1)
+        self.fig_freq_time.update_yaxes(range=[-180, 180], title="Phase Δϕ (°)", secondary_y=False, row=2, col=1)
+        self.fig_freq_time.update_yaxes(range=[0, self.fs_per_ch / 2.0], title="Pitch f0 (Hz)", secondary_y=True, row=2, col=1)
+        self.fig_freq_time.update_xaxes(range=[0, self.total_duration_ms], title="Time (Milliseconds)", row=2, col=1)
+
+        # =====================================================================
+        # Tab 3: Dedicated Phase & Wave Timing (TDoA Zero-Crossings)
+        # =====================================================================
+        self.fig_phase_timing = make_subplots(
+            rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
+            subplot_titles=(
+                "<b>Zero-Centered Waveform Overlay (A0 vs A1 Timing Lead/Lag)</b>",
+                "<b>Continuous Instantaneous Phase Difference Δϕ(t)</b>"
+            )
+        )
+        self.fig_phase_timing = go.FigureWidget(self.fig_phase_timing)
+        self.fig_phase_timing.add_scatter(x=t_ms, y=[0.0]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.8), name="A0 AC Wave (V)", row=1, col=1)
+        self.fig_phase_timing.add_scatter(x=t_ms, y=[0.0]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.8), name="A1 AC Wave (V)", row=1, col=1)
+        self.fig_phase_timing.add_scatter(x=t_ms, y=[0.0]*len(t_ms), mode="lines", line=dict(color="#FFA500", width=1.8), name="Phase Δϕ(t) [°]", row=2, col=1)
+
+        self.fig_phase_timing.update_layout(template="plotly_dark", height=540, margin=dict(l=45, r=25, t=40, b=35), uirevision="t3")
+        self.fig_phase_timing.update_yaxes(range=[-1.65, 1.65], title="AC Voltage (V)", row=1, col=1)
+        self.fig_phase_timing.update_yaxes(range=[-180, 180], title="Phase Δϕ (°)", row=2, col=1)
+        self.fig_phase_timing.update_xaxes(range=[0, self.total_duration_ms], title="Time (Milliseconds)", row=2, col=1)
+
+        # Tabs Container
+        self.tabs = widgets.Tab(children=[self.fig_amp_time, self.fig_freq_time, self.fig_phase_timing])
+        self.tabs.set_title(0, "📈 Amplitude & ILD")
+        self.tabs.set_title(1, "📊 Spectrogram & Pitch")
+        self.tabs.set_title(2, "⏱ Phase & TDoA")
+
+    def _setup_callbacks(self):
+        self.start_btn.on_click(lambda _: self.start())
+        self.stop_btn.on_click(lambda _: self.stop())
+        self.force_btn.on_click(lambda _: self._on_force_clicked())
+        self.clear_log_btn.on_click(lambda _: self._on_clear_log_clicked())
+        self.profile_dd.observe(self._on_profile_change, names="value")
+
+    def _on_profile_change(self, change):
+        if self.overlay and hasattr(self.overlay, "set_profile"):
+            info = self.overlay.set_profile(change["new"])
+            self.fs_per_ch = info["sample_rate_hz"]
+            self.total_duration_ms = info["time_window_ms"]
+            print(f"[Analytics] Regime set to '{change['new']}' ({self.fs_per_ch:.0f} Hz, {self.total_duration_ms:.2f} ms window)")
+
+    def _on_force_clicked(self):
+        if self.trig_mode_dd.value == "Single":
+            self._single_done = False
+        if self.trigger:
+            self.trigger.force_trigger()
+
+    def _on_clear_log_clicked(self):
+        clear_output(wait=True)
+        display(widgets.VBox([self.control_panel, self.tabs]))
+
+    def _update_loop(self):
+        dma_time = self.overlay.axi_dma_0
+        trig = self.trigger
+
+        # Initialize XADC into Continuous Sequence Mode (0x2000)
+        if hasattr(self.overlay, "xadc_wiz_0"):
+            self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
+            self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
+            self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
+
+        # Reset DMA 0
+        dma_time.mmio.write(0x30, 0x04)
+        time.sleep(0.005)
+        dma_time.recvchannel.start()
+
+        if trig:
+            trig.mmio.write(0x0C, 5000000)
+            trig.set_threshold(float(self.trig_level_slider.value))
+
+        buf_time = allocate(shape=(self.packet_size,), dtype="u2")
+        dma_armed = False
+        print(f"[AcousticAnalytics] High-Performance Diagnostic Engine Active ({self.fs_per_ch:.0f} Hz Synchronous Stream)")
+
+        try:
+            while self._is_running:
+                mode = self.trig_mode_dd.value
+                if mode == "Single" and self._single_done:
+                    time.sleep(0.02)
+                    continue
+
+                if not dma_armed:
+                    dma_time.recvchannel.transfer(buf_time)
+                    ctrl = (1 << 0) | (1 << 3) if mode == "Single" else ((1 << 0) | (1 << 1))
+                    trig.mmio.write(0x00, ctrl)
+                    dma_armed = True
+
+                if dma_time.recvchannel.idle:
+                    dma_armed = False
+
+                    raw = np.array(buf_time)
+                    v_a0 = (raw[0::2] >> 4) * (3.3 / 4095.0)
+                    v_a1 = (raw[1::2] >> 4) * (3.3 / 4095.0)
+
+                    # Crop boundary words
+                    p_v1 = v_a0[8:-8]
+                    p_v2 = v_a1[8:-8]
+                    n_pts = len(p_v1)
+                    t_ms = np.linspace(0, (n_pts / self.fs_per_ch) * 1000.0, n_pts)
+
+                    # 1. Analytic Amplitude Envelopes & Shrouds
+                    env_a0 = AcousticAnalytics.extract_analytic_envelope(p_v1, remove_dc=True)
+                    env_a1 = AcousticAnalytics.extract_analytic_envelope(p_v2, remove_dc=True)
+                    v_mid0 = float(np.mean(p_v1))
+                    v_mid1 = float(np.mean(p_v2))
+
+                    # 2. Inter-aural Level Difference (ILD)
+                    ild_db, ste_a0, ste_a1, ild_idx = AcousticAnalytics.compute_ild(p_v1, p_v2, window_len=64, hop_size=16)
+                    t_ild_ms = (ild_idx / self.fs_per_ch) * 1000.0
+
+                    # 3. Sliding STFT Spectrogram (Full width)
+                    stft_times, stft_freqs, spec_mat = AcousticAnalytics.compute_sliding_stft(
+                        p_v1, fs=self.fs_per_ch, nperseg=256, noverlap=192, window=self.stft_window_dd.value
+                    )
+                    stft_times_full = np.linspace(0, t_ms[-1], spec_mat.shape[1])
+
+                    # 4. Instantaneous Phase Difference & Sub-Hertz Pitch
+                    phase_diff_deg = AcousticAnalytics.compute_instantaneous_phase_diff(p_v1, p_v2)
+                    mean_phase_deg = float(np.median(phase_diff_deg))
+
+                    spec_full = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(p_v1 - v_mid0)) / (n_pts / 2.0), 1e-6))
+                    freq_axis_full = np.fft.rfftfreq(n_pts, d=1.0 / self.fs_per_ch)
+                    p_f0, p_mag = AcousticAnalytics.track_sub_hertz_pitch(freq_axis_full, spec_full, min_freq_hz=30.0)
+
+                    vpp1, vpp2 = float(np.ptp(p_v1)), float(np.ptp(p_v2))
+                    mean_ild = float(np.mean(ild_db))
+
+                    # Live Pan Balance Indicator
+                    if mean_ild > 8.0:
+                        pan_str = "[◀◀ L       ]"
+                    elif mean_ild > 2.5:
+                        pan_str = "[ ◀ L       ]"
+                    elif mean_ild < -8.0:
+                        pan_str = "[       R ▶▶]"
+                    elif mean_ild < -2.5:
+                        pan_str = "[       R ▶ ]"
+                    else:
+                        pan_str = "[    ● C    ]"
+
+                    active_tab = self.tabs.selected_index
+
+                    if active_tab == 0:  # Tab 1: 3-Strip Stacked Amplitude & ILD
+                        with self.fig_amp_time.batch_update():
+                            # Strip 1: A0
+                            self.fig_amp_time.data[0].x = t_ms
+                            self.fig_amp_time.data[0].y = p_v1
+                            self.fig_amp_time.data[1].x = t_ms
+                            self.fig_amp_time.data[1].y = v_mid0 + env_a0
+                            self.fig_amp_time.data[2].x = t_ms
+                            self.fig_amp_time.data[2].y = v_mid0 - env_a0
+                            # Strip 2: A1
+                            self.fig_amp_time.data[3].x = t_ms
+                            self.fig_amp_time.data[3].y = p_v2
+                            self.fig_amp_time.data[4].x = t_ms
+                            self.fig_amp_time.data[4].y = v_mid1 + env_a1
+                            self.fig_amp_time.data[5].x = t_ms
+                            self.fig_amp_time.data[5].y = v_mid1 - env_a1
+                            # Strip 3: ILD
+                            self.fig_amp_time.data[6].x = t_ild_ms
+                            self.fig_amp_time.data[6].y = ild_db
+                            self.fig_amp_time.layout.xaxis3.range = [0, t_ms[-1]]
+
+                    elif active_tab == 1:  # Tab 2: Spectrogram & Decoupled Pitch/Phase
+                        with self.fig_freq_time.batch_update():
+                            self.fig_freq_time.data[0].z = spec_mat
+                            self.fig_freq_time.data[0].x = stft_times_full
+                            self.fig_freq_time.data[0].y = stft_freqs
+                            self.fig_freq_time.data[1].x = t_ms
+                            self.fig_freq_time.data[1].y = phase_diff_deg
+                            self.fig_freq_time.data[2].x = [0, t_ms[-1]]
+                            self.fig_freq_time.data[2].y = [p_f0, p_f0]
+                            self.fig_freq_time.data[2].text = [f"f0 = {p_f0:.1f} Hz"]
+                            self.fig_freq_time.layout.xaxis2.range = [0, t_ms[-1]]
+
+                    elif active_tab == 2:  # Tab 3: Dedicated Phase Alignment & TDoA
+                        with self.fig_phase_timing.batch_update():
+                            self.fig_phase_timing.data[0].x = t_ms
+                            self.fig_phase_timing.data[0].y = p_v1 - v_mid0
+                            self.fig_phase_timing.data[1].x = t_ms
+                            self.fig_phase_timing.data[1].y = p_v2 - v_mid1
+                            self.fig_phase_timing.data[2].x = t_ms
+                            self.fig_phase_timing.data[2].y = phase_diff_deg
+                            self.fig_phase_timing.layout.xaxis2.range = [0, t_ms[-1]]
+
+                    self.readout_metrics.value = (
+                        f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>"
+                        f"A0: {vpp1:.2f}V | A1: {vpp2:.2f}V | f0: {p_f0:.1f}Hz | ΔL: {mean_ild:+.1f}dB | Δϕ: {mean_phase_deg:+.1f}° | {pan_str}"
+                        f"</span>"
+                    )
+
+                    if mode == "Single":
+                        self._single_done = True
+                    time.sleep(0.033)
+                else:
+                    time.sleep(0.005)
+
+        except Exception as e:
+            print(f"[AcousticAnalytics ERROR]: {e}")
+        finally:
+            self._is_running = False
+            buf_time.close()
+            print("[AcousticAnalytics] Dashboard stopped cleanly.")
+
+    def start(self):
+        if not self._is_running:
+            self._is_running = True
+            self._single_done = False
+            self._thread = threading.Thread(target=self._update_loop, daemon=True)
+            self._thread.start()
+
+    def stop(self):
+        self._is_running = False
+        self._single_done = False
+
+    def display(self):
+        r1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.clear_log_btn, self.readout_metrics], layout=widgets.Layout(gap="10px", margin="0 0 8px 0"))
+        r2 = widgets.HBox([self.trig_mode_dd, self.trig_level_slider, self.stft_window_dd, self.profile_dd])
+        self.control_panel = widgets.VBox([r1, r2], layout=widgets.Layout(margin="0 0 12px 0"))
+        display(widgets.VBox([self.control_panel, self.tabs]))```
 
 01_ad3_getting_started.ipynb:
 
@@ -2266,15 +2954,16 @@ class OscilloscopeOverlay(Overlay):
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 3: Real-Time Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard\n",
+    "# Notebook 3: Academic Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard\n",
     "\n",
-    "This notebook deploys the complete interactive **Multi-Domain Instrument** supporting simultaneous dual-channel acquisition on the PYNQ-Z2 (`v1.3.0-rc1`).\n",
+    "This notebook deploys the interactive **Laboratory Instrument** with Analog Discovery 3 (AD3) integration on the PYNQ-Z2 (`v1.5.0`).\n",
     "\n",
-    "### 🌟 Multi-Channel Instrument Features:\n",
-    "- 📈 **Dual Oscilloscope Tab:** Real-time 1 MSPS synchronous traces for **CH1 (A0, Cyan)** and **CH2 (A1, Magenta)** with hardware edge triggering and live threshold line.\n",
-    "- 📊 **Spectrum Analyzer Tab:** Real-time 2048-point FPGA FFT ($0 - 500\\,\\text{kHz}$) with auto peak detector ($f_0$) and configurable dBV/dBFS/Linear scales.\n",
-    "- 🔀 **Dual View Tab:** Stacked multi-domain view displaying both Time-Domain channels (top) and Frequency-Domain spectrum (bottom) concurrently at ~30 FPS.\n",
-    "- ⚡ **Dual AD3 Wavegen Controls:** Real-time independent waveform, frequency, and amplitude controls for **W1 (A0)** and **W2 (A1)**."
+    "### 🌟 Academic Instrument Features:\n",
+    "- 📈 **500 kSPS Dual Scope:** Real-time synchronous traces for **CH1 (A0, Cyan)** and **CH2 (A1, Magenta)** with hardware edge triggering and live threshold line.\n",
+    "- ⚡ **Wideband AD3 Wavegen Controls ($10\\text{ Hz} - 1\\text{ MHz}$):** Real-time independent frequency, amplitude, and waveform controls for **W1 (A0)** and **W2 (A1)**.\n",
+    "- 🔬 **Nyquist Folding & Aliasing Exploration:** Freely dial frequencies beyond the $250\\,\\text{kHz}$ Nyquist limit ($300\\,\\text{kHz}, 450\\,\\text{kHz}, 800\\,\\text{kHz}$) to observe real-time spectral folding.\n",
+    "- 📊 **Dual Spectrum Analyzer Tab:** Real-time 2048-point spectrum ($0 - 250\\,\\text{kHz}$) with auto peak detector ($f_0$) and configurable dBV/dBFS/Linear scales.\n",
+    "- 🔀 **4-Tab Synchronized Display:** Dual Scope, Dual FFT, and isolated Channel 1/2 Views."
    ]
   },
   {
@@ -2354,7 +3043,7 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
-04_fft_spectrum_analyzer.ipynb:
+04_audio_dashboard.ipynb:
 
 ```json
 {
@@ -2363,206 +3052,15 @@ class OscilloscopeOverlay(Overlay):
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "# Notebook 4: Real-Time PL-Accelerated FFT & Spectrum Analyzer Guide\n",
+    "# Notebook 4: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
     "\n",
-    "This notebook demonstrates how to capture and visualize frequency spectra computed entirely within the **Programmable Logic (PL)** using the **Xilinx LogiCORE FFT (2048-pt)** and **CORDIC Magnitude Engine** on the PYNQ-Z2."
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 1. System Setup & Permission Check"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
-    "from pynq_oscilloscope.fft_dma import StreamingFFT\n",
-    "import matplotlib.pyplot as plt\n",
-    "import time\n",
-    "\n",
-    "# Grant permissions for /dev/bus/usb\n",
-    "check_usb_permissions()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 2. Load the Hardware Overlay\n",
-    "Instantiate `OscilloscopeOverlay()`. It automatically loads the dual-DMA bitstream containing both Time-Domain and Frequency-Domain hardware engines."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol = OscilloscopeOverlay()\n",
-    "print(\"✅ Oscilloscope & Spectrum Analyzer Overlay loaded successfully!\")\n",
-    "print(f\"  • Time Packet Size : {ol.packet_size} samples @ 1 MSPS\")\n",
-    "print(f\"  • PL FFT Bins      : {ol.fft_points // 2} unique frequency bins (0 Hz to 500 kHz)\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 3. Generate a Test Tone with Analog Discovery 3\n",
-    "Start generating a **25 kHz Sine wave** (1.5V Amplitude, 1.65V DC Offset) on Wavegen Channel 1 (W1 $\\rightarrow$ A0)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Start 25 kHz Sine wave\n",
-    "ol.wavegen.start(shape=\"Sine\", frequency=25000.0, amplitude=1.5, offset=1.65)\n",
-    "time.sleep(1.0)\n",
-    "print(\"✅ AD3 active @ 25 kHz (1.5V amplitude, 1.65V offset).\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 4. Capture PL Hardware FFT Spectrum\n",
-    "Capture the spectrum in **dBV** logarithmic units directly from the FPGA using `ol.capture_fft()`."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Capture single-sided spectrum (0 Hz to 500 kHz)\n",
-    "freqs, mags = ol.capture_fft(unit=\"dBV\")\n",
-    "\n",
-    "# Detect peak frequency\n",
-    "peak_freq, peak_mag = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=1000.0)\n",
-    "print(f\"🎯 Dominant Peak: {peak_freq/1e3:.2f} kHz @ {peak_mag:.1f} dBV\")"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 5. Spectrum Visualization with Matplotlib\n",
-    "Plot the frequency spectrum showing the sharp fundamental peak."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs / 1e3, mags, color=\"#FF007F\", linewidth=1.6, label=f\"PL Hardware FFT (Peak: {peak_freq/1e3:.1f} kHz)\")\n",
-    "plt.scatter([peak_freq / 1e3], [peak_mag], color=\"#00FFCC\", s=60, zorder=5, label=f\"Fundamental: {peak_freq/1e3:.1f} kHz ({peak_mag:.1f} dBV)\")\n",
-    "\n",
-    "plt.title(\"Hardware-Accelerated 1 MSPS FFT Spectrum (0 to 100 kHz)\", fontsize=12, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 100)  # Zoom to 0 - 100 kHz\n",
-    "plt.ylim(-100, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 6. Harmonic Distortion Test (Square Wave Fourier Harmonics)\n",
-    "Update AD3 to a **10 kHz Square wave** and observe the fundamental frequency ($f_0$) along with odd harmonics ($3f_0 = 30\\,\\text{kHz}$, $5f_0 = 50\\,\\text{kHz}$, $7f_0 = 70\\,\\text{kHz}$, $9f_0 = 90\\,\\text{kHz}$)."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "# Switch to 10 kHz Square wave\n",
-    "ol.wavegen.update_parameters(shape=\"Square\", frequency=10000.0, amplitude=1.2)\n",
-    "time.sleep(0.5)\n",
-    "\n",
-    "freqs_sq, mags_sq = ol.capture_fft(unit=\"dBV\")\n",
-    "\n",
-    "plt.figure(figsize=(10, 4.5), dpi=100)\n",
-    "plt.plot(freqs_sq / 1e3, mags_sq, color=\"#E040FB\", linewidth=1.6, label=\"10 kHz Square Wave Spectrum\")\n",
-    "\n",
-    "plt.title(\"Square Wave Odd Harmonics: 10k, 30k, 50k, 70k, 90k Hz\", fontsize=12, fontweight=\"bold\")\n",
-    "plt.xlabel(\"Frequency (kHz)\", fontsize=10)\n",
-    "plt.ylabel(\"Magnitude (dBV)\", fontsize=10)\n",
-    "plt.xlim(0, 100)\n",
-    "plt.ylim(-110, 0)\n",
-    "plt.grid(True, linestyle=\"--\", alpha=0.5)\n",
-    "plt.legend(loc=\"upper right\")\n",
-    "\n",
-    "plt.tight_layout()\n",
-    "plt.show()"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## 7. Clean Hardware Shutdown"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "ol.close()\n",
-    "print(\"🔒 Hardware handles closed and CMA memory released.\")"
-   ]
-  }
- ],
- "metadata": {
-  "language_info": {
-   "name": "python"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
-```
-
-05_audio_dashboard.ipynb:
-
-```json
-{
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# Notebook 5: Real-Time Dual-Channel Audio & Microphone Dashboard\n",
-    "\n",
-    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.4.5`).\n",
+    "This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.5.0`).\n",
     "\n",
     "Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), this dashboard runs completely independently without requiring an Analog Discovery 3 (AD3).\n",
     "\n",
     "### 🌟 Audio Instrument Features:\n",
     "- 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.\n",
-    "- ⏱ **Expanded $20.48\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($50\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
+    "- ⏱ **Expanded $40.96\\,\\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\\,\\text{Hz} - 250\\,\\text{Hz}$).\n",
     "- 🚨 **Real-Time VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\\,\\text{V}$ or $V > 3.10\\,\\text{V}$).\n",
     "- 🎯 **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\\pm 0.5\\,\\text{Hz}$ accuracy.\n",
     "- 🪟 **Hann-Windowed Spectral Analysis:** Suppresses spectral leakage by $>32\\,\\text{dB}$ for clean harmonic overtone visualization.\n",
@@ -2648,6 +3146,142 @@ class OscilloscopeOverlay(Overlay):
 }
 ```
 
+05_acoustic_analytic_curves.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 5: Real-Time Acoustic Analytics (Amplitude vs. Time & Spectrogram Engine)\n",
+    "\n",
+    "This notebook demonstrates the high-precision **Acoustic Analytics & Diagnostic Engine** (`v1.5.0`), featuring:\n",
+    "- 📈 **Amplitude vs. Time:** Instantaneous physical Hilbert analytic envelopes ($A(t) = \\sqrt{x^2 + \\hat{x}^2}$) and Inter-aural Level Differences ($\\Delta L(t)$ in dB).\n",
+    "- 📊 **Frequency vs. Time:** 2D Short-Time Fourier Transform (STFT) rolling waterfall spectrograms with Blackman-Harris windowing.\n",
+    "- 🎯 **Sub-Hertz Pitch Tracking:** Three-point parabolic fundamental frequency tracker ($f_0(t) \\pm 0.2\\,\\text{Hz}$).\n",
+    "- ⏱ **Microsecond Phase Difference:** Instantaneous inter-channel phase monitoring ($\\Delta \\phi(t)$) backed by true simultaneous dual-ADC sampling ($0.00\\,\\mu\\text{s}$ skew)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. System Setup & Permissions\n",
+    "Ensure USB and bus access permissions are granted on the PYNQ-Z2 board."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay, AcousticAnalytics\n",
+    "\n",
+    "check_usb_permissions()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Load the Upgraded Hardware Overlay\n",
+    "Instantiate `OscilloscopeOverlay()`. It automatically loads the `v1.5.0-rc1` bitstream with simultaneous dual-ADC sampling and clean FFT demultiplexing."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol = OscilloscopeOverlay()\n",
+    "ol.set_profile(\"audio\")\n",
+    "print(\"✅ Oscilloscope & Analytics Overlay loaded successfully!\")\n",
+    "print(ol.get_profile_info())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Physical Verification: Zero-Skew Splitter Test\n",
+    "Verify true simultaneous sampling by feeding the same physical signal into both A0 and A1."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Capture synchronous stereo frame\n",
+    "v_a0, v_a1 = ol.capture_stereo()\n",
+    "\n",
+    "# Calculate lag via cross-correlation\n",
+    "corr = np.correlate(v_a0 - np.mean(v_a0), v_a1 - np.mean(v_a1), mode='full')\n",
+    "lags = np.arange(-len(v_a0) + 1, len(v_a0))\n",
+    "delay_samples = lags[np.argmax(corr)]\n",
+    "delay_us = (delay_samples / ol.fs_per_ch) * 1e6\n",
+    "\n",
+    "print(f\"Measured Inter-Channel Delay: {delay_us:.3f} µs (Sample Lag: {delay_samples})\")\n",
+    "if abs(delay_samples) == 0:\n",
+    "    print(\"🎯 PASSED: True Simultaneous Dual-ADC Sampling Confirmed (0.00 µs skew).\")\n",
+    "else:\n",
+    "    print(f\"ℹ️ Lag detected: {delay_samples} samples.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Launch the Real-Time Diagnostic Dashboard\n",
+    "Launch the interactive Acoustic Analytics dashboard."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Render and launch real-time analytics\n",
+    "app = ol.analytic_dashboard()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Clean Shutdown\n",
+    "Halt live acquisition and release CMA memory."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "app.stop()\n",
+    "ol.close()\n",
+    "print(\"🔒 Analytics Dashboard stopped and memory released.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
 generate_sw_summary.sh:
 
 ```bash
@@ -2718,11 +3352,13 @@ TARGET_FILES=(
     "pynq_oscilloscope/ad3_wavegen.py:python"
     "pynq_oscilloscope/hw_trigger.py:python"
     "pynq_oscilloscope/overlay.py:python"
+    "pynq_oscilloscope/analytics.py:python"
+    "pynq_oscilloscope/analytic_dashboard.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
-    "notebooks/04_fft_spectrum_analyzer.ipynb:json"
-    "notebooks/05_audio_dashboard.ipynb:json"
+    "notebooks/04_audio_dashboard.ipynb:json"
+    "notebooks/05_acoustic_analytic_curves.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
