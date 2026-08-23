@@ -3,7 +3,7 @@ Git Context & Branch Info:
 ```log
 Current Branch: feat/acoustic-analytics-curves
 Branch Tracking Status:
-* feat/acoustic-analytics-curves 17acf8c [origin/feat/acoustic-analytics-curves] fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config
+* feat/acoustic-analytics-curves 9f160b7 [origin/feat/acoustic-analytics-curves: ahead 1] feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -12,7 +12,8 @@ Branch Tracking Status:
   main                           aa2a789 [origin/main] fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard
 
 Git Commit Graph & History:
-* 17acf8c  (HEAD -> feat/acoustic-analytics-curves, origin/feat/acoustic-analytics-curves) - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
+* 9f160b7  (HEAD -> feat/acoustic-analytics-curves) - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
+* 17acf8c  (origin/feat/acoustic-analytics-curves) - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
 * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
 * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
 * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
@@ -26,8 +27,7 @@ Git Commit Graph & History:
 * aa2a789  (tag: v1.4.5, origin/main, origin/HEAD, main) - 2026-08-19 : fix(dashboard): clean conflict markers and finalize v1.4.5 multi-regime audio dashboard (SiririComun)
 *   5146d9b  - 2026-08-19 : merge: feat(release) prepare v1.4.5-rc1 pre-release candidate for board testing (SiririComun)
 |\  
-| * 09ffe2f  (origin/feat/runtime-config-audio, feat/runtime-config-audio) - 2026-08-19 : chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks (SiririComun)
-| * a7feb27  - 2026-08-19 : docs(notebooks): synchronize per-channel time window calculations and v1.4.5 API across suite (SiririComun)```
+| * 09ffe2f  (origin/feat/runtime-config-audio, feat/runtime-config-audio) - 2026-08-19 : chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks (SiririComun)```
 
 Files structure: 
 
@@ -124,7 +124,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.5.0-rc1"
+    "version": "v1.5.0"
 }```
 
 setup.py:
@@ -140,7 +140,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.5.0-rc1",
+    version="1.5.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -197,7 +197,7 @@ from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.5.0-rc1"
+__version__ = "1.5.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -780,7 +780,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.3.0-rc1"
+                "version": "v1.5.0"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -819,7 +819,7 @@ class HardwareLoader:
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.3.0-rc1")
+        target_version = version or config.get("version", "v1.5.0")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"

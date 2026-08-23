@@ -14,7 +14,7 @@ from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.notebooks import copy_notebooks
 
-__version__ = "1.5.0-rc1"
+__version__ = "1.5.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",

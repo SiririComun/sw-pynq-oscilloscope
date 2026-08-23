@@ -23,7 +23,7 @@ class HardwareLoader:
         if not config_path.exists():
             return {
                 "repo": "SiririComun/hw-xadc-dma-overlays",
-                "version": "v1.3.0-rc1"
+                "version": "v1.5.0"
             }
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -62,7 +62,7 @@ class HardwareLoader:
         """
         config = cls.get_hardware_config()
         repo = config.get("repo", "SiririComun/hw-xadc-dma-overlays")
-        target_version = version or config.get("version", "v1.3.0-rc1")
+        target_version = version or config.get("version", "v1.5.0")
         
         board_name = cls.get_board_name()
         bit_filename = f"{board_name}.bit"
