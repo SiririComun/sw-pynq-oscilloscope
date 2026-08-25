@@ -1,34 +1,35 @@
 Git Context & Branch Info:
 
 ```log
-Current Branch: feat/continuous-audio-recorder
+Current Branch: feat/pl-freq-filter-ifft
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder 22b410b [origin/feat/continuous-audio-recorder] fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs
+  feat/continuous-audio-recorder 2512407 [origin/feat/continuous-audio-recorder] fix(audio_dashboard): add display_window kwargs and include in context tracking
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
+* feat/pl-freq-filter-ifft       2512407 fix(audio_dashboard): add display_window kwargs and include in context tracking
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
-  main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
+  main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* 22b410b  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs (SiririComun)
+* 2512407  (HEAD -> feat/pl-freq-filter-ifft, origin/main, origin/feat/continuous-audio-recorder, origin/HEAD, main, feat/continuous-audio-recorder) - 2026-08-25 : fix(audio_dashboard): add display_window kwargs and include in context tracking (SiririComun)
+* 22b410b  - 2026-08-25 : fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs (SiririComun)
 * 4a37e3f  - 2026-08-25 : fix(driver): harmonize HardwareTrigger, StreamingFFT, and OscilloscopeOverlay APIs (SiririComun)
 * 065ee46  - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
 * f08d33f  - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
 * 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
 * 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
 * 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
-*   a09aad0  (tag: v1.5.0, origin/main, origin/HEAD, main) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
+*   a09aad0  (tag: v1.5.0) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
 |\  
 | * ffa2f0d  (origin/feat/acoustic-analytics-curves, feat/acoustic-analytics-curves) - 2026-08-22 : docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum (SiririComun)
 | * 349e18e  - 2026-08-22 : docs(notebooks): renumber suite to 5 notebooks and align metadata with v1.5.0 (SiririComun)
 | * c0a1628  - 2026-08-22 : refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments (SiririComun)
 | * f892bbf  - 2026-08-22 : chore(release): pin hardware overlay to v1.5.0 and bump package version to 1.5.0 (SiririComun)
 | * 9f160b7  - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
-| * 17acf8c  - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
-| * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)```
+| * 17acf8c  - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)```
 
 Files structure: 
 
@@ -139,7 +140,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.5.0"
+    "version": "v1.6.0-rc1"
 }```
 
 setup.py:
@@ -155,7 +156,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.5.0",
+    version="1.6.0-rc1",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -220,7 +221,7 @@ from pynq_oscilloscope.audio_utils import (
     process_raw_recording,
 )
 
-__version__ = "1.5.0"
+__version__ = "1.6.0-rc1"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",

@@ -22,7 +22,7 @@ from pynq_oscilloscope.audio_utils import (
     process_raw_recording,
 )
 
-__version__ = "1.5.0"
+__version__ = "1.6.0-rc1"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
