@@ -146,6 +146,11 @@ class OscilloscopeOverlay(Overlay):
           • channel = 2: Route Channel 2 (A1) to FFT
         """
         self.trigger.set_fft_source(channel=channel)
+    
+    @property
+    def fs_per_ch(self) -> float:
+        """Alias for sample_rate_hz (sampling rate per channel)."""
+        return self.sample_rate_hz
 
     # -------------------------------------------------------------------------
     # Single-Frame Capture API
@@ -336,7 +341,7 @@ class OscilloscopeOverlay(Overlay):
 
     def audio_dashboard(self, display_window: int = 1024):
         """Launches the Dedicated Passive Microphone Instrument."""
-        from pynq_oscilloscope.dashboard import AudioDashboard
+        from pynq_oscilloscope.audio_dashboard import AudioDashboard
         dash = AudioDashboard(overlay=self, display_window=display_window)
         dash.display()
         return dash

@@ -4,7 +4,7 @@ Git Context & Branch Info:
 Current Branch: feat/continuous-audio-recorder
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder 065ee46 [origin/feat/continuous-audio-recorder] fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics
+* feat/continuous-audio-recorder 4a37e3f [origin/feat/continuous-audio-recorder] fix(driver): harmonize HardwareTrigger, StreamingFFT, and OscilloscopeOverlay APIs
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -13,7 +13,8 @@ Branch Tracking Status:
   main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
 
 Git Commit Graph & History:
-* 065ee46  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
+* 4a37e3f  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : fix(driver): harmonize HardwareTrigger, StreamingFFT, and OscilloscopeOverlay APIs (SiririComun)
+* 065ee46  - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
 * f08d33f  - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
 * 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
 * 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 | * 9f160b7  - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
 | * 17acf8c  - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
 | * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
-| * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
-| * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)```
+| * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)```
 
 Files structure: 
 
@@ -2032,6 +2032,11 @@ class OscilloscopeOverlay(Overlay):
           • channel = 2: Route Channel 2 (A1) to FFT
         """
         self.trigger.set_fft_source(channel=channel)
+    
+    @property
+    def fs_per_ch(self) -> float:
+        """Alias for sample_rate_hz (sampling rate per channel)."""
+        return self.sample_rate_hz
 
     # -------------------------------------------------------------------------
     # Single-Frame Capture API
@@ -2222,7 +2227,7 @@ class OscilloscopeOverlay(Overlay):
 
     def audio_dashboard(self, display_window: int = 1024):
         """Launches the Dedicated Passive Microphone Instrument."""
-        from pynq_oscilloscope.dashboard import AudioDashboard
+        from pynq_oscilloscope.audio_dashboard import AudioDashboard
         dash = AudioDashboard(overlay=self, display_window=display_window)
         dash.display()
         return dash
@@ -2710,6 +2715,7 @@ from pynq import allocate
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 
 class AcousticAnalyticDashboard:
@@ -2723,12 +2729,15 @@ class AcousticAnalyticDashboard:
         self,
         overlay=None,
         packet_size: int = 2048,
-        fs_per_ch: float = 50_000.0
+        fs_per_ch: float = 50_000.0,
+        display_window: int = 1024,
+        **kwargs
     ):
         self.overlay = overlay
         self.packet_size = packet_size
         self.num_pts_per_ch = packet_size // 2
         self.fs_per_ch = fs_per_ch
+        self.display_window = display_window
         self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
 
         self._is_running = False

@@ -17,6 +17,7 @@ from pynq import allocate
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
+from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 
 class AcousticAnalyticDashboard:
@@ -30,12 +31,15 @@ class AcousticAnalyticDashboard:
         self,
         overlay=None,
         packet_size: int = 2048,
-        fs_per_ch: float = 50_000.0
+        fs_per_ch: float = 50_000.0,
+        display_window: int = 1024,
+        **kwargs
     ):
         self.overlay = overlay
         self.packet_size = packet_size
         self.num_pts_per_ch = packet_size // 2
         self.fs_per_ch = fs_per_ch
+        self.display_window = display_window
         self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
 
         self._is_running = False
