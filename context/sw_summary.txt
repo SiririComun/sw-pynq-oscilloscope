@@ -4,7 +4,7 @@ Git Context & Branch Info:
 Current Branch: feat/continuous-audio-recorder
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder f08d33f [origin/feat/continuous-audio-recorder] feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook
+* feat/continuous-audio-recorder 065ee46 [origin/feat/continuous-audio-recorder] fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -13,7 +13,8 @@ Branch Tracking Status:
   main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
 
 Git Commit Graph & History:
-* f08d33f  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
+* 065ee46  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
+* f08d33f  - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
 * 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
 * 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
 * 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 | * 17acf8c  - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
 | * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
 | * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
-| * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
-| * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)```
+| * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)```
 
 Files structure: 
 
@@ -1151,6 +1151,26 @@ class StreamingFFT:
         self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
         self._window_cache: Dict[str, np.ndarray] = {}
 
+    def update_configuration(self, fft_points: Optional[int] = None, sample_rate_hz: Optional[float] = None):
+        """
+        Updates the active FFT transform length and ADC sampling rate parameters.
+        """
+        if fft_points is not None and int(fft_points) != self.fft_points:
+            self.fft_points = int(fft_points)
+            self.num_bins = self.fft_points // 2
+            if hasattr(self, "_buffer") and self._buffer is not None:
+                try:
+                    self._buffer.close()
+                except Exception:
+                    pass
+            self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
+
+        if sample_rate_hz is not None:
+            self.sample_rate_hz = float(sample_rate_hz)
+
+        self.delta_f = self.sample_rate_hz / self.fft_points
+        self.freq_axis = np.arange(self.num_bins) * self.delta_f
+
     # =========================================================================
     # 1. Windowing Engine
     # =========================================================================
@@ -1221,12 +1241,10 @@ class StreamingFFT:
         w = self.get_window_vector(n, window_type=window_type)
         windowed_x = x * w
 
-        # Compute single-sided RFFT with coherent gain compensation
         coherent_gain = np.sum(w) / n
         fft_complex = np.fft.rfft(windowed_x)
         freqs = np.fft.rfftfreq(n, d=1.0 / self.sample_rate_hz)
         
-        # Peak linear amplitude normalization
         linear_volts = (np.abs(fft_complex) / (n / 2.0)) / max(coherent_gain, 1e-4)
 
         unit_clean = unit.strip().upper()
@@ -1251,9 +1269,17 @@ class StreamingFFT:
         self.dma.recvchannel.wait()
         return np.array(self._buffer, copy=True)
 
-    def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
-        raw_full = self.capture_raw()
+    def process_buffer(
+        self,
+        cma_buffer,
+        unit: str = "dBV",
+        window: str = "hann",
+        ref_voltage: float = 3.3
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Processes a raw CORDIC magnitude buffer into calibrated spectrum magnitudes.
+        """
+        raw_full = np.array(cma_buffer, copy=True)
         raw_half = raw_full[:self.num_bins].astype(np.float64)
 
         linear_volts = (raw_half / 2048.0) * (ref_voltage / 4095.0)
@@ -1266,11 +1292,16 @@ class StreamingFFT:
             safe_raw = np.maximum(raw_half, 1.0)
             magnitudes = 20.0 * np.log10(safe_raw / 65535.0)
         elif unit_clean == "LINEAR":
-            magnitudes = linear_volts * 1000.0  # Millivolts
+            magnitudes = linear_volts * 1000.0
         else:
             raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
 
         return self.freq_axis, magnitudes
+
+    def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
+        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
+        raw_full = self.capture_raw()
+        return self.process_buffer(raw_full, unit=unit, ref_voltage=ref_voltage)
 
     # =========================================================================
     # 4. Sub-Bin Quadratic Peak Interpolation
@@ -1285,7 +1316,7 @@ class StreamingFFT:
     ) -> Tuple[float, float]:
         """
         Finds the dominant pitch / fundamental frequency with sub-Hertz accuracy
-        using three-point parabolic interpolation.
+        using three-point parabolic interpolation on spectral peaks.
         """
         valid_indices = np.where(freqs >= min_freq_hz)[0]
         if len(valid_indices) == 0:
@@ -1638,9 +1669,13 @@ class HardwareTrigger:
         self.set_edge(edge)
         self.set_mode(mode)
 
-    def set_source(self, source: str):
-        """Set trigger source channel: 'CH1' (A0) or 'CH2' (A1)."""
-        src_clean = source.strip().upper()
+    def set_source(self, source: Union[str, int]):
+        """Set trigger source channel: 1/'CH1' (A0) or 2/'CH2' (A1)."""
+        if isinstance(source, int):
+            src_clean = "CH2" if source == 2 else "CH1"
+        else:
+            src_clean = str(source).strip().upper()
+
         ctrl = self.mmio.read(self.REG_CONTROL)
         if "CH2" in src_clean or "A1" in src_clean:
             ctrl |= self.BIT_TRIG_SRC_CH2
@@ -1648,24 +1683,36 @@ class HardwareTrigger:
             ctrl &= ~self.BIT_TRIG_SRC_CH2
         self.mmio.write(self.REG_CONTROL, ctrl)
 
+    def set_trigger_source(self, channel: Union[str, int] = 1):
+        """Alias for set_source."""
+        self.set_source(channel)
+
     def get_source(self) -> str:
         """Read active trigger source channel from hardware."""
         ctrl = self.mmio.read(self.REG_CONTROL)
         return "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
 
-    def set_fft_channel(self, source: str = "CH1"):
+    def set_fft_channel(self, source: Union[str, int] = "CH1"):
         """
         Configures the hardware stream demux routing to the FFT core (xfft_0).
         
-        :param source: 'CH1' (A0) or 'CH2' (A1).
+        :param source: 1/'CH1' (A0) or 2/'CH2' (A1).
         """
-        src_clean = source.strip().upper()
+        if isinstance(source, int):
+            src_clean = "CH2" if source == 2 else "CH1"
+        else:
+            src_clean = str(source).strip().upper()
+
         ctrl = self.mmio.read(self.REG_CONTROL)
         if "CH2" in src_clean or "A1" in src_clean:
             ctrl |= self.BIT_FFT_SRC_CH2
         else:
             ctrl &= ~self.BIT_FFT_SRC_CH2
         self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def set_fft_source(self, channel: Union[str, int] = 1):
+        """Alias for set_fft_channel."""
+        self.set_fft_channel(channel)
 
     def get_fft_channel(self) -> str:
         """Read the active channel routed to the hardware FFT core."""
@@ -1786,6 +1833,10 @@ class HardwareTrigger:
         # PG109: Byte 0 = NFFT (bits [4:0]), Byte 1 = FWD_INV (bit [8])
         config_word = (fwd_bit << 8) | nfft
         self.mmio.write(self.REG_FFT_CONFIG, config_word)
+
+    def set_fft_length(self, n_points: int = 2048, forward: bool = True):
+        """Alias for set_fft_config."""
+        self.set_fft_config(n_points=n_points, forward=forward)
 
     def get_fft_length(self) -> int:
         """Reads active FFT transform length N from hardware register."""
@@ -1956,6 +2007,15 @@ class OscilloscopeOverlay(Overlay):
         # Update software drivers
         self.fft.update_configuration(fft_points=self.fft_points, sample_rate_hz=self.sample_rate_hz)
         self.analytics.sample_rate_hz = self.sample_rate_hz
+
+    def get_profile_info(self, profile_name: Optional[str] = None) -> Dict[str, Any]:
+        """Returns details and parameters for the active or requested profile."""
+        prof_name = profile_name or self.current_profile
+        prof = self.PROFILES.get(prof_name, self.PROFILES["oscilloscope"]).copy()
+        prof["profile_name"] = prof_name
+        prof["time_window_ms"] = (prof["packet_size"] / 2.0 / prof["sample_rate_hz"]) * 1000.0
+        prof["nyquist_hz"] = prof["sample_rate_hz"] / 2.0
+        return prof
 
     def set_trigger_source(self, channel: int = 1):
         """

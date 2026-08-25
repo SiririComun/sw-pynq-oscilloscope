@@ -98,9 +98,13 @@ class HardwareTrigger:
         self.set_edge(edge)
         self.set_mode(mode)
 
-    def set_source(self, source: str):
-        """Set trigger source channel: 'CH1' (A0) or 'CH2' (A1)."""
-        src_clean = source.strip().upper()
+    def set_source(self, source: Union[str, int]):
+        """Set trigger source channel: 1/'CH1' (A0) or 2/'CH2' (A1)."""
+        if isinstance(source, int):
+            src_clean = "CH2" if source == 2 else "CH1"
+        else:
+            src_clean = str(source).strip().upper()
+
         ctrl = self.mmio.read(self.REG_CONTROL)
         if "CH2" in src_clean or "A1" in src_clean:
             ctrl |= self.BIT_TRIG_SRC_CH2
@@ -108,24 +112,36 @@ class HardwareTrigger:
             ctrl &= ~self.BIT_TRIG_SRC_CH2
         self.mmio.write(self.REG_CONTROL, ctrl)
 
+    def set_trigger_source(self, channel: Union[str, int] = 1):
+        """Alias for set_source."""
+        self.set_source(channel)
+
     def get_source(self) -> str:
         """Read active trigger source channel from hardware."""
         ctrl = self.mmio.read(self.REG_CONTROL)
         return "CH2 (A1)" if (ctrl & self.BIT_TRIG_SRC_CH2) else "CH1 (A0)"
 
-    def set_fft_channel(self, source: str = "CH1"):
+    def set_fft_channel(self, source: Union[str, int] = "CH1"):
         """
         Configures the hardware stream demux routing to the FFT core (xfft_0).
         
-        :param source: 'CH1' (A0) or 'CH2' (A1).
+        :param source: 1/'CH1' (A0) or 2/'CH2' (A1).
         """
-        src_clean = source.strip().upper()
+        if isinstance(source, int):
+            src_clean = "CH2" if source == 2 else "CH1"
+        else:
+            src_clean = str(source).strip().upper()
+
         ctrl = self.mmio.read(self.REG_CONTROL)
         if "CH2" in src_clean or "A1" in src_clean:
             ctrl |= self.BIT_FFT_SRC_CH2
         else:
             ctrl &= ~self.BIT_FFT_SRC_CH2
         self.mmio.write(self.REG_CONTROL, ctrl)
+
+    def set_fft_source(self, channel: Union[str, int] = 1):
+        """Alias for set_fft_channel."""
+        self.set_fft_channel(channel)
 
     def get_fft_channel(self) -> str:
         """Read the active channel routed to the hardware FFT core."""
@@ -246,6 +262,10 @@ class HardwareTrigger:
         # PG109: Byte 0 = NFFT (bits [4:0]), Byte 1 = FWD_INV (bit [8])
         config_word = (fwd_bit << 8) | nfft
         self.mmio.write(self.REG_FFT_CONFIG, config_word)
+
+    def set_fft_length(self, n_points: int = 2048, forward: bool = True):
+        """Alias for set_fft_config."""
+        self.set_fft_config(n_points=n_points, forward=forward)
 
     def get_fft_length(self) -> int:
         """Reads active FFT transform length N from hardware register."""

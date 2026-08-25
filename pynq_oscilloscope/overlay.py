@@ -122,6 +122,15 @@ class OscilloscopeOverlay(Overlay):
         self.fft.update_configuration(fft_points=self.fft_points, sample_rate_hz=self.sample_rate_hz)
         self.analytics.sample_rate_hz = self.sample_rate_hz
 
+    def get_profile_info(self, profile_name: Optional[str] = None) -> Dict[str, Any]:
+        """Returns details and parameters for the active or requested profile."""
+        prof_name = profile_name or self.current_profile
+        prof = self.PROFILES.get(prof_name, self.PROFILES["oscilloscope"]).copy()
+        prof["profile_name"] = prof_name
+        prof["time_window_ms"] = (prof["packet_size"] / 2.0 / prof["sample_rate_hz"]) * 1000.0
+        prof["nyquist_hz"] = prof["sample_rate_hz"] / 2.0
+        return prof
+
     def set_trigger_source(self, channel: int = 1):
         """
         Selects hardware edge trigger comparator source:

@@ -57,6 +57,26 @@ class StreamingFFT:
         self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
         self._window_cache: Dict[str, np.ndarray] = {}
 
+    def update_configuration(self, fft_points: Optional[int] = None, sample_rate_hz: Optional[float] = None):
+        """
+        Updates the active FFT transform length and ADC sampling rate parameters.
+        """
+        if fft_points is not None and int(fft_points) != self.fft_points:
+            self.fft_points = int(fft_points)
+            self.num_bins = self.fft_points // 2
+            if hasattr(self, "_buffer") and self._buffer is not None:
+                try:
+                    self._buffer.close()
+                except Exception:
+                    pass
+            self._buffer = allocate(shape=(self.fft_points,), dtype="u2")
+
+        if sample_rate_hz is not None:
+            self.sample_rate_hz = float(sample_rate_hz)
+
+        self.delta_f = self.sample_rate_hz / self.fft_points
+        self.freq_axis = np.arange(self.num_bins) * self.delta_f
+
     # =========================================================================
     # 1. Windowing Engine
     # =========================================================================
@@ -127,12 +147,10 @@ class StreamingFFT:
         w = self.get_window_vector(n, window_type=window_type)
         windowed_x = x * w
 
-        # Compute single-sided RFFT with coherent gain compensation
         coherent_gain = np.sum(w) / n
         fft_complex = np.fft.rfft(windowed_x)
         freqs = np.fft.rfftfreq(n, d=1.0 / self.sample_rate_hz)
         
-        # Peak linear amplitude normalization
         linear_volts = (np.abs(fft_complex) / (n / 2.0)) / max(coherent_gain, 1e-4)
 
         unit_clean = unit.strip().upper()
@@ -157,9 +175,17 @@ class StreamingFFT:
         self.dma.recvchannel.wait()
         return np.array(self._buffer, copy=True)
 
-    def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
-        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
-        raw_full = self.capture_raw()
+    def process_buffer(
+        self,
+        cma_buffer,
+        unit: str = "dBV",
+        window: str = "hann",
+        ref_voltage: float = 3.3
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Processes a raw CORDIC magnitude buffer into calibrated spectrum magnitudes.
+        """
+        raw_full = np.array(cma_buffer, copy=True)
         raw_half = raw_full[:self.num_bins].astype(np.float64)
 
         linear_volts = (raw_half / 2048.0) * (ref_voltage / 4095.0)
@@ -172,11 +198,16 @@ class StreamingFFT:
             safe_raw = np.maximum(raw_half, 1.0)
             magnitudes = 20.0 * np.log10(safe_raw / 65535.0)
         elif unit_clean == "LINEAR":
-            magnitudes = linear_volts * 1000.0  # Millivolts
+            magnitudes = linear_volts * 1000.0
         else:
             raise ValueError(f"Invalid unit '{unit}'. Choose from: 'dBV', 'dBFS', 'Linear'.")
 
         return self.freq_axis, magnitudes
+
+    def capture_spectrum(self, unit: str = "dBV", ref_voltage: float = 3.3) -> Tuple[np.ndarray, np.ndarray]:
+        """Captures hardware FFT frame and returns (frequencies, magnitudes)."""
+        raw_full = self.capture_raw()
+        return self.process_buffer(raw_full, unit=unit, ref_voltage=ref_voltage)
 
     # =========================================================================
     # 4. Sub-Bin Quadratic Peak Interpolation
@@ -191,7 +222,7 @@ class StreamingFFT:
     ) -> Tuple[float, float]:
         """
         Finds the dominant pitch / fundamental frequency with sub-Hertz accuracy
-        using three-point parabolic interpolation.
+        using three-point parabolic interpolation on spectral peaks.
         """
         valid_indices = np.where(freqs >= min_freq_hz)[0]
         if len(valid_indices) == 0:
