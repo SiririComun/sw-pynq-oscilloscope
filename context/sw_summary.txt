@@ -4,7 +4,7 @@ Git Context & Branch Info:
 Current Branch: feat/continuous-audio-recorder
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder 11a7b2d feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder
+* feat/continuous-audio-recorder 19fe636 feat(overlay): integrate multi-second record_audio and in-memory play_audio methods
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -13,7 +13,8 @@ Branch Tracking Status:
   main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
 
 Git Commit Graph & History:
-* 11a7b2d  (HEAD -> feat/continuous-audio-recorder) - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
+* 19fe636  (HEAD -> feat/continuous-audio-recorder) - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
+* 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
 * 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
 *   a09aad0  (tag: v1.5.0, origin/main, origin/HEAD, main) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
 |\  
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 | * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
 | * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
 | * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
-| * 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
-| * 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)```
+| * 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)```
 
 Files structure: 
 
@@ -73,7 +73,8 @@ Files structure:
 │   ├── 02_xadc_getting_started.ipynb
 │   ├── 03_oscilloscope_dashboard.ipynb
 │   ├── 04_audio_dashboard.ipynb
-│   └── 05_acoustic_analytic_curves.ipynb
+│   ├── 05_acoustic_analytic_curves.ipynb
+│   └── 06_audio_recording_and_playback.ipynb
 ├── pynq_oscilloscope
 │   ├── ad3_wavegen.py
 │   ├── analytic_dashboard.py
@@ -93,7 +94,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-10 directories, 49 files
+10 directories, 50 files
 ```
 
 pypi.yml:
@@ -3542,6 +3543,235 @@ class AcousticAnalyticDashboard:
 }
 ```
 
+06_audio_recording_and_playback.ipynb:
+
+```json
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Notebook 6: Real-World Microphone Audio Recording & In-Jupyter Playback\n",
+    "\n",
+    "This notebook demonstrates how to record live sound from **MAX4466 / MAX9814 electret microphones** connected to the PYNQ-Z2 board using the multi-second continuous DMA engine.\n",
+    "\n",
+    "### Hardware Wiring:\n",
+    "| Pin | PYNQ-Z2 Connection | Description |\n",
+    "| :--- | :--- | :--- |\n",
+    "| **VCC** | **3.3V** | Power Header |\n",
+    "| **GND** | **GND** | Power Header |\n",
+    "| **OUT (Mic 1)** | **Header J1 Pin A0** | Channel 1 (1.65V DC bias) |\n",
+    "| **OUT (Mic 2)** | **Header J1 Pin A1** | Channel 2 (1.65V DC bias) |\n",
+    "\n",
+    "*(No Analog Discovery 3 required — you can speak, whistle, or play music into the microphones!)*"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Initialize Overlay in Full-Band Audio Mode\n",
+    "Loads the overlay and selects the `audio` regime (50 kSPS sampling rate, 25 kHz Nyquist bandwidth)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay\n",
+    "import numpy as np\n",
+    "import plotly.graph_objects as go\n",
+    "from plotly.subplots import make_subplots\n",
+    "import time\n",
+    "\n",
+    "check_usb_permissions()\n",
+    "\n",
+    "# Load overlay and switch to 50 kSPS Audio Profile\n",
+    "ol = OscilloscopeOverlay()\n",
+    "ol.set_profile(\"audio\")\n",
+    "print(f\"✅ Active Profile: {ol.current_profile} ({ol.sample_rate_hz/1e3:.1f} kSPS)\")\n",
+    "print(f\"   • Channel 1 : Arduino Header Pin A0 (Mic 1)\")\n",
+    "print(f\"   • Channel 2 : Arduino Header Pin A1 (Mic 2)\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Record 3 Seconds of Real Microphone Audio\n",
+    "Execute the cell below and **speak, clap, or play audio near Microphone 1 (A0)**."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "rec_duration = 3.0 # seconds\n",
+    "print(f\"🎙️ RECORDING NOW ({rec_duration:.1f} seconds)... Speak or make sound near Mic 1 (A0)!\")\n",
+    "\n",
+    "t_start = time.time()\n",
+    "# Record Channel 1 (A0) with auto-gain scaling\n",
+    "mic1_audio = ol.record_audio(duration_sec=rec_duration, channel=1, auto_gain=True)\n",
+    "elapsed = time.time() - t_start\n",
+    "\n",
+    "print(f\"✅ Recording Complete in {elapsed:.2f} s!\")\n",
+    "print(f\"   • Captured Samples : {len(mic1_audio):,}\")\n",
+    "print(f\"   • Dynamic Range    : Min = {mic1_audio.min():.3f}, Max = {mic1_audio.max():.3f}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Listen to the Recorded Sound in Jupyter\n",
+    "Plays back the recorded microphone audio directly in your browser using the HTML5 audio widget."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(\"🔊 Playing back recorded audio from Microphone 1 (A0):\")\n",
+    "ol.play_audio(custom_data=mic1_audio, sample_rate_hz=ol.sample_rate_hz)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Plot Recorded Acoustic Waveform\n",
+    "Displays the recorded multi-second acoustic waveform."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "time_axis_s = np.linspace(0, rec_duration, len(mic1_audio))\n",
+    "\n",
+    "fig_wave = go.Figure()\n",
+    "fig_wave.add_scatter(\n",
+    "    x=time_axis_s, y=mic1_audio,\n",
+    "    mode=\"lines\",\n",
+    "    line=dict(color=\"#00FFCC\", width=1.2),\n",
+    "    name=\"Mic 1 (A0)\"\n",
+    ")\n",
+    "fig_wave.update_layout(\n",
+    "    title=f\"<b>Captured Microphone Waveform ({rec_duration:.1f} Seconds @ 50 kSPS)</b>\",\n",
+    "    template=\"plotly_dark\",\n",
+    "    xaxis_title=\"Time (Seconds)\",\n",
+    "    yaxis_title=\"Normalized Audio Amplitude [-1.0, 1.0]\",\n",
+    "    height=380\n",
+    ")\n",
+    "fig_wave.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Microscopic Frame-Boundary Continuity Check\n",
+    "Zooms in on the exact sample index ($n = 1024$) where the DMA double-buffer swaps between Frame 1 and Frame 2 to verify **zero dropped samples or glitches**."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "boundary_idx = 1024\n",
+    "zoom_win = 100\n",
+    "\n",
+    "slice_idx = np.arange(boundary_idx - zoom_win, boundary_idx + zoom_win)\n",
+    "slice_time_ms = (slice_idx / ol.sample_rate_hz) * 1e3\n",
+    "slice_audio = mic1_audio[slice_idx]\n",
+    "\n",
+    "fig_zoom = go.Figure()\n",
+    "fig_zoom.add_scatter(x=slice_time_ms, y=slice_audio, mode=\"lines+markers\", marker=dict(size=4), line=dict(color=\"#00FFCC\", width=2), name=\"Audio Signal\")\n",
+    "fig_zoom.add_vline(x=(boundary_idx / ol.sample_rate_hz) * 1e3, line=dict(color=\"#FF007F\", width=2, dash=\"dash\"), annotation_text=\"DMA Buffer Boundary (1024)\")\n",
+    "\n",
+    "fig_zoom.update_layout(\n",
+    "    title=\"<b>Frame Boundary Transition: Smooth Sinusoidal Continuity</b>\",\n",
+    "    template=\"plotly_dark\",\n",
+    "    xaxis_title=\"Time (ms)\",\n",
+    "    yaxis_title=\"Normalized Amplitude\",\n",
+    "    height=350\n",
+    ")\n",
+    "fig_zoom.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6. Simultaneous Stereo Microphone Recording (Mic 1 & Mic 2)\n",
+    "Records from **both microphones simultaneously** (`channel=0` returns an $[N, 2]$ array for Left/Right audio)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(\"🎙️ Recording 2.0 seconds of STEREO audio from Mic 1 (A0) and Mic 2 (A1)...\")\n",
+    "stereo_audio = ol.record_audio(duration_sec=2.0, channel=0, auto_gain=True)\n",
+    "\n",
+    "t_stereo = np.linspace(0, 2.0, len(stereo_audio))\n",
+    "show_len = 2000 # Show first 40 ms\n",
+    "\n",
+    "fig_stereo = make_subplots(rows=2, cols=1, subplot_titles=(\"<b>Microphone 1 (Header Pin A0)</b>\", \"<b>Microphone 2 (Header Pin A1)</b>\"))\n",
+    "fig_stereo.add_scatter(x=t_stereo[:show_len]*1e3, y=stereo_audio[:show_len, 0], mode=\"lines\", line=dict(color=\"#00FFCC\", width=1.5), row=1, col=1)\n",
+    "fig_stereo.add_scatter(x=t_stereo[:show_len]*1e3, y=stereo_audio[:show_len, 1], mode=\"lines\", line=dict(color=\"#FFA500\", width=1.5), row=2, col=1)\n",
+    "\n",
+    "fig_stereo.update_layout(template=\"plotly_dark\", height=450, showlegend=False)\n",
+    "fig_stereo.update_xaxes(title=\"Time (ms)\", row=2, col=1)\n",
+    "fig_stereo.update_yaxes(title=\"Amp\", row=1, col=1)\n",
+    "fig_stereo.update_yaxes(title=\"Amp\", row=2, col=1)\n",
+    "fig_stereo.show()\n",
+    "\n",
+    "print(\"🔊 Listen to Stereo Recording (Left = Mic 1, Right = Mic 2):\")\n",
+    "ol.play_audio(custom_data=stereo_audio, sample_rate_hz=ol.sample_rate_hz)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 7. Clean Hardware Shutdown"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ol.close()\n",
+    "print(\"🔒 Hardware closed and DMA memory released.\")"
+   ]
+  }
+ ],
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
+```
+
 generate_sw_summary.sh:
 
 ```bash
@@ -3620,6 +3850,7 @@ TARGET_FILES=(
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_audio_dashboard.ipynb:json"
     "notebooks/05_acoustic_analytic_curves.ipynb:json"
+    "notebooks/06_audio_recording_and_playback.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 

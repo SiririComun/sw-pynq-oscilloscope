@@ -73,6 +73,7 @@ TARGET_FILES=(
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
     "notebooks/04_audio_dashboard.ipynb:json"
     "notebooks/05_acoustic_analytic_curves.ipynb:json"
+    "notebooks/06_audio_recording_and_playback.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
