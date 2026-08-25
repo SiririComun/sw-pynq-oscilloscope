@@ -17,7 +17,6 @@ from pynq import allocate
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
-from pynq_oscilloscope.audio_dashboard import AudioDashboard
 
 
 class AcousticAnalyticDashboard:
@@ -247,34 +246,21 @@ class AcousticAnalyticDashboard:
                     n_pts = len(p_v1)
                     t_ms = np.linspace(0, (n_pts / self.fs_per_ch) * 1000.0, n_pts)
 
-                    # 1. Analytic Amplitude Envelopes & Shrouds
-                    env_a0 = AcousticAnalytics.extract_analytic_envelope(p_v1, remove_dc=True)
-                    env_a1 = AcousticAnalytics.extract_analytic_envelope(p_v2, remove_dc=True)
                     v_mid0 = float(np.mean(p_v1))
                     v_mid1 = float(np.mean(p_v2))
-
-                    # 2. Inter-aural Level Difference (ILD)
-                    ild_db, ste_a0, ste_a1, ild_idx = AcousticAnalytics.compute_ild(p_v1, p_v2, window_len=64, hop_size=16)
-                    t_ild_ms = (ild_idx / self.fs_per_ch) * 1000.0
-
-                    # 3. Sliding STFT Spectrogram (Full width)
-                    stft_times, stft_freqs, spec_mat = AcousticAnalytics.compute_sliding_stft(
-                        p_v1, fs=self.fs_per_ch, nperseg=256, noverlap=192, window=self.stft_window_dd.value
-                    )
-                    stft_times_full = np.linspace(0, t_ms[-1], spec_mat.shape[1])
-
-                    # 4. Instantaneous Phase Difference & Sub-Hertz Pitch
-                    phase_diff_deg = AcousticAnalytics.compute_instantaneous_phase_diff(p_v1, p_v2)
-                    mean_phase_deg = float(np.median(phase_diff_deg))
-
-                    spec_full = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(p_v1 - v_mid0)) / (n_pts / 2.0), 1e-6))
-                    freq_axis_full = np.fft.rfftfreq(n_pts, d=1.0 / self.fs_per_ch)
-                    p_f0, p_mag = AcousticAnalytics.track_sub_hertz_pitch(freq_axis_full, spec_full, min_freq_hz=30.0)
-
                     vpp1, vpp2 = float(np.ptp(p_v1)), float(np.ptp(p_v2))
-                    mean_ild = float(np.mean(ild_db))
 
-                    # Live Pan Balance Indicator
+                    active_tab = self.tabs.selected_index
+
+                    # -------------------------------------------------------------
+                    # Fast Header Status Bar Metrics
+                    # -------------------------------------------------------------
+                    p1_ac = p_v1 - v_mid0
+                    p2_ac = p_v2 - v_mid1
+                    e0 = np.mean(p1_ac ** 2)
+                    e1 = np.mean(p2_ac ** 2)
+                    mean_ild = 10.0 * np.log10((e0 + 1e-9) / (e1 + 1e-9))
+
                     if mean_ild > 8.0:
                         pan_str = "[◀◀ L       ]"
                     elif mean_ild > 2.5:
@@ -286,30 +272,43 @@ class AcousticAnalyticDashboard:
                     else:
                         pan_str = "[    ● C    ]"
 
-                    active_tab = self.tabs.selected_index
-
+                    # -------------------------------------------------------------
+                    # LAZY COMPUTATION: Compute ONLY what the active tab needs!
+                    # -------------------------------------------------------------
                     if active_tab == 0:  # Tab 1: 3-Strip Stacked Amplitude & ILD
+                        env_a0 = AcousticAnalytics.extract_analytic_envelope(p_v1, remove_dc=True)
+                        env_a1 = AcousticAnalytics.extract_analytic_envelope(p_v2, remove_dc=True)
+                        ild_db, _, _, ild_idx = AcousticAnalytics.compute_ild(p_v1, p_v2, window_len=64, hop_size=16)
+                        t_ild_ms = (ild_idx / self.fs_per_ch) * 1000.0
+
                         with self.fig_amp_time.batch_update():
-                            # Strip 1: A0
                             self.fig_amp_time.data[0].x = t_ms
                             self.fig_amp_time.data[0].y = p_v1
                             self.fig_amp_time.data[1].x = t_ms
                             self.fig_amp_time.data[1].y = v_mid0 + env_a0
                             self.fig_amp_time.data[2].x = t_ms
                             self.fig_amp_time.data[2].y = v_mid0 - env_a0
-                            # Strip 2: A1
                             self.fig_amp_time.data[3].x = t_ms
                             self.fig_amp_time.data[3].y = p_v2
                             self.fig_amp_time.data[4].x = t_ms
                             self.fig_amp_time.data[4].y = v_mid1 + env_a1
                             self.fig_amp_time.data[5].x = t_ms
                             self.fig_amp_time.data[5].y = v_mid1 - env_a1
-                            # Strip 3: ILD
                             self.fig_amp_time.data[6].x = t_ild_ms
                             self.fig_amp_time.data[6].y = ild_db
                             self.fig_amp_time.layout.xaxis3.range = [0, t_ms[-1]]
 
-                    elif active_tab == 1:  # Tab 2: Spectrogram & Decoupled Pitch/Phase
+                    elif active_tab == 1:  # Tab 2: STFT Spectrogram & Pitch Tracking
+                        stft_times, stft_freqs, spec_mat = AcousticAnalytics.compute_sliding_stft(
+                            p_v1, fs=self.fs_per_ch, nperseg=256, noverlap=192, window=self.stft_window_dd.value
+                        )
+                        stft_times_full = np.linspace(0, t_ms[-1], spec_mat.shape[1])
+                        phase_diff_deg = AcousticAnalytics.compute_instantaneous_phase_diff(p_v1, p_v2)
+
+                        spec_full = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(p1_ac)) / (n_pts / 2.0), 1e-6))
+                        freq_axis_full = np.fft.rfftfreq(n_pts, d=1.0 / self.fs_per_ch)
+                        p_f0, _ = AcousticAnalytics.track_sub_hertz_pitch(freq_axis_full, spec_full, min_freq_hz=30.0)
+
                         with self.fig_freq_time.batch_update():
                             self.fig_freq_time.data[0].z = spec_mat
                             self.fig_freq_time.data[0].x = stft_times_full
@@ -322,18 +321,21 @@ class AcousticAnalyticDashboard:
                             self.fig_freq_time.layout.xaxis2.range = [0, t_ms[-1]]
 
                     elif active_tab == 2:  # Tab 3: Dedicated Phase Alignment & TDoA
+                        phase_diff_deg = AcousticAnalytics.compute_instantaneous_phase_diff(p_v1, p_v2)
+
                         with self.fig_phase_timing.batch_update():
                             self.fig_phase_timing.data[0].x = t_ms
-                            self.fig_phase_timing.data[0].y = p_v1 - v_mid0
+                            self.fig_phase_timing.data[0].y = p1_ac
                             self.fig_phase_timing.data[1].x = t_ms
-                            self.fig_phase_timing.data[1].y = p_v2 - v_mid1
+                            self.fig_phase_timing.data[1].y = p2_ac
                             self.fig_phase_timing.data[2].x = t_ms
                             self.fig_phase_timing.data[2].y = phase_diff_deg
                             self.fig_phase_timing.layout.xaxis2.range = [0, t_ms[-1]]
 
+                    # Fast Readout update
                     self.readout_metrics.value = (
                         f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>"
-                        f"A0: {vpp1:.2f}V | A1: {vpp2:.2f}V | f0: {p_f0:.1f}Hz | ΔL: {mean_ild:+.1f}dB | Δϕ: {mean_phase_deg:+.1f}° | {pan_str}"
+                        f"A0: {vpp1:.2f}V | A1: {vpp2:.2f}V | ΔL: {mean_ild:+.1f}dB | {pan_str}"
                         f"</span>"
                     )
 

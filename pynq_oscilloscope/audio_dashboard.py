@@ -1,12 +1,12 @@
 """
-pynq_oscilloscope.audio_dashboard: Interactive Multi-Regime Audio Dashboard.
-Features live profile switching (Audio, Speech, Deep Bass, Scope), multi-windowing,
-and real-time VU meter clipping detection for dual MAX4466 microphones.
+pynq_oscilloscope.audio_dashboard: Dedicated Real-Time Audio & Passive Microphone Dashboard.
+Runs completely independently without requiring an Analog Discovery 3.
+Features real-time VU meters, clipping alerts, sub-bin pitch tracking, and Hann-windowed FFT.
 """
 
 import time
 import threading
-from typing import Optional
+from typing import Optional, Tuple
 from IPython.display import clear_output, display
 import numpy as np
 import ipywidgets as widgets
@@ -14,30 +14,38 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pynq import allocate
 
+from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 
 
 class AudioDashboard:
     """
-    Dedicated Multi-Regime Audio & Microphone Instrument.
-    Runs completely independently of AD3 with real-time clipping detection.
+    Dedicated Passive Microphone Dashboard (MAX4466 / MAX9814 on Pins A0 & A1).
+    Features 4-tab synchronized view, live VU meter bars, saturation warnings,
+    and Hann-windowed harmonic overtone tracking.
     """
 
     def __init__(
         self,
         overlay=None,
         packet_size: int = 2048,
-        fft_points: int = 2048
+        fs_per_ch: float = 50_000.0,
+        display_window: int = 1024,
+        **kwargs
     ):
         self.overlay = overlay
         self.packet_size = packet_size
-        self.fft_points = fft_points
-        
+        self.num_pts_per_ch = packet_size // 2
+        self.fs_per_ch = fs_per_ch
+        self.display_window = display_window
+        self.total_duration_ms = (self.num_pts_per_ch / self.fs_per_ch) * 1000.0
+
         self._is_running = False
         self._single_done = False
         self._thread: Optional[threading.Thread] = None
 
+        # Bind sub-drivers from overlay
         if self.overlay and hasattr(self.overlay, "trigger"):
             self.trigger = self.overlay.trigger
         elif self.overlay:
@@ -45,10 +53,17 @@ class AudioDashboard:
         else:
             self.trigger = None
 
+        if self.overlay and hasattr(self.overlay, "xadc"):
+            self.xadc = self.overlay.xadc
+        elif self.overlay:
+            self.xadc = StreamingXADC(self.overlay, default_packet_size=self.packet_size)
+        else:
+            self.xadc = None
+
         if self.overlay and hasattr(self.overlay, "fft"):
             self.fft = self.overlay.fft
         elif self.overlay:
-            self.fft = StreamingFFT(self.overlay, fft_points=self.fft_points, sample_rate_hz=50000.0)
+            self.fft = StreamingFFT(self.overlay, fft_points=self.packet_size, sample_rate_hz=self.fs_per_ch)
         else:
             self.fft = None
 
@@ -57,113 +72,91 @@ class AudioDashboard:
         self._setup_callbacks()
 
     def _build_ui(self):
-        # 1. Action Row
-        self.start_btn = widgets.Button(description="Start Audio", button_style="success", icon="play", layout=widgets.Layout(width="115px"))
+        # 1. Action Row & Real-Time Readouts
+        self.start_btn = widgets.Button(description="Start Live", button_style="success", icon="play", layout=widgets.Layout(width="115px"))
         self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop", layout=widgets.Layout(width="95px"))
-        self.force_btn = widgets.Button(description="Force / Arm", button_style="warning", icon="bolt", layout=widgets.Layout(width="115px"))
+        self.force_btn = widgets.Button(description="Force Trig", button_style="warning", icon="bolt", layout=widgets.Layout(width="115px"))
         self.clear_log_btn = widgets.Button(description="Clear Log", button_style="", icon="trash", layout=widgets.Layout(width="100px"))
+        self.autorange_toggle = widgets.ToggleButton(value=True, description="Auto-Range", button_style="info", layout=widgets.Layout(width="110px"))
 
-        self.readout_ch1 = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>A0: Vpp=0.00V | f0=0.0Hz [OK]</span>")
-        self.readout_ch2 = widgets.HTML("<span style='color:#FF007F; font-family:monospace; font-size:13px; font-weight:bold;'>A1: Vpp=0.00V | f0=0.0Hz [OK]</span>")
+        self.readout_vu = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>Mic 1 (A0): [          ] 0.00V | Mic 2 (A1): [          ] 0.00V | Pitch f0: 0.0 Hz</span>")
 
-        # 2. Multi-Regime & Windowing Controls
-        self.regime_dd = widgets.Dropdown(
-            options=[
-                ("Full-Band Audio (50 kSPS)", "audio"),
-                ("Speech / Vocal (25 kSPS)", "speech"),
-                ("Deep Bass Zoom (10 kSPS)", "bass_zoom"),
-                ("Wideband Scope (500 kSPS)", "oscilloscope")
-            ],
-            value="audio",
-            description="Regime:",
-            layout=widgets.Layout(width="260px")
-        )
-
-        self.window_dd = widgets.Dropdown(
-            options=[("Hann", "hann"), ("Blackman", "blackman"), ("Flat-Top", "flattop"), ("Rectangular", "rectangular")],
-            value="hann",
-            description="Window:",
-            layout=widgets.Layout(width="190px")
-        )
-
-        self.fft_unit_dd = widgets.Dropdown(
-            options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px")
-        )
-
-        self.audio_span_dd = widgets.Dropdown(
-            options=[("Auto Full Span", 0), ("8 kHz (Vocal)", 8000), ("3 kHz (Speech)", 3000), ("500 Hz (Bass Zoom)", 500)],
-            value=0,
-            description="Audio Span:",
-            layout=widgets.Layout(width="210px")
-        )
-
-        # 3. Trigger Controls
+        # 2. Controls Row
         self.trig_mode_dd = widgets.Dropdown(options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px"))
         self.trig_edge_dd = widgets.Dropdown(options=["Rising", "Falling"], value="Rising", description="Trig Edge:", layout=widgets.Layout(width="180px"))
-        self.trig_src_dd = widgets.Dropdown(options=["CH1 (A0)", "CH2 (A1)"], value="CH1 (A0)", description="Trig Source:", layout=widgets.Layout(width="190px"))
+        self.trig_src_dd = widgets.Dropdown(options=["Mic 1 (A0)", "Mic 2 (A1)"], value="Mic 1 (A0)", description="Trig Src:", layout=widgets.Layout(width="190px"))
         self.trig_level_slider = widgets.FloatSlider(value=1.65, min=0.0, max=3.3, step=0.05, description="Trig Level:", continuous_update=False, layout=widgets.Layout(width="220px"))
         self.trig_level_input = widgets.BoundedFloatText(value=1.65, min=0.0, max=3.3, step=0.05, layout=widgets.Layout(width="80px"))
         widgets.jslink((self.trig_level_slider, "value"), (self.trig_level_input, "value"))
 
+        # 3. FFT Controls
+        self.fft_unit_dd = widgets.Dropdown(options=["dBV", "dBFS", "Linear"], value="dBV", description="FFT Unit:", layout=widgets.Layout(width="170px"))
+        self.fft_span_dd = widgets.Dropdown(
+            options=[("Audio Spectrum (25 kHz)", 25000), ("Vocal / Speech (10 kHz)", 10000), ("Bass Sub-Band (2 kHz)", 2000)],
+            value=25000,
+            description="FFT Span:",
+            layout=widgets.Layout(width="230px")
+        )
+
     def _build_plots(self):
-        t_ms = np.linspace(0, 20.48, 1008)
-        initial_freq = np.linspace(0, 25000, 505)
+        t_ms = np.linspace(0, self.total_duration_ms, self.num_pts_per_ch - 16)
+        initial_freq = np.linspace(0, self.fs_per_ch / 2.0, len(t_ms) // 2 + 1)
 
         # Tab 1: Dual Audio Scope
         self.fig_dual_scope = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
-            subplot_titles=("<b>Channel 1: A0 (Mic 1 Audio)</b>", "<b>Channel 2: A1 (Mic 2 Audio)</b>"))
+            subplot_titles=("<b>Microphone 1: Header A0 (Time Domain)</b>", "<b>Microphone 2: Header A1 (Time Domain)</b>"))
         self.fig_dual_scope = go.FigureWidget(self.fig_dual_scope)
-        self.fig_dual_scope.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 (A0)", row=1, col=1)
-        self.fig_dual_scope.add_scatter(x=[0, 20.48], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A0)", row=1, col=1)
-        self.fig_dual_scope.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2 (A1)", row=2, col=1)
-        self.fig_dual_scope.add_scatter(x=[0, 20.48], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A1)", visible=False, row=2, col=1)
-        self.fig_dual_scope.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="audio_t1")
+        self.fig_dual_scope.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1", row=1, col=1)
+        self.fig_dual_scope.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A0)", row=1, col=1)
+        self.fig_dual_scope.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2", row=2, col=1)
+        self.fig_dual_scope.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger (A1)", visible=False, row=2, col=1)
+        self.fig_dual_scope.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t1")
         self.fig_dual_scope.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_dual_scope.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=2, col=1)
-        self.fig_dual_scope.update_xaxes(range=[0, 20.48], title="Time (Milliseconds)", row=2, col=1)
+        self.fig_dual_scope.update_xaxes(range=[0, self.total_duration_ms], title="Time (Milliseconds)", row=2, col=1)
 
-        # Tab 2: Dual Audio FFT
+        # Tab 2: Dual Audio Spectrum
         self.fig_dual_fft = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
-            subplot_titles=("<b>Mic 1 Spectrum (Audio FFT)</b>", "<b>Mic 2 Spectrum (Audio FFT)</b>"))
+            subplot_titles=("<b>Microphone 1: A0 Spectrum (FFT)</b>", "<b>Microphone 2: A1 Spectrum (FFT)</b>"))
         self.fig_dual_fft = go.FigureWidget(self.fig_dual_fft)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 FFT", row=1, col=1)
-        self.fig_dual_fft.add_scatter(x=[440], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
+        self.fig_dual_fft.add_scatter(x=[1000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 1", row=1, col=1)
         self.fig_dual_fft.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2 FFT", row=2, col=1)
-        self.fig_dual_fft.add_scatter(x=[440], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
-        self.fig_dual_fft.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="audio_t2")
-        self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=1, col=1)
-        self.fig_dual_fft.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
+        self.fig_dual_fft.add_scatter(x=[1000], y=[-40], mode="markers+text", marker=dict(color="#FFA500", size=7, symbol="diamond"), text=["Peak"], textposition="top center", name="Peak 2", row=2, col=1)
+        self.fig_dual_fft.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t2")
+        self.fig_dual_fft.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=1, col=1)
+        self.fig_dual_fft.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=2, col=1)
         self.fig_dual_fft.update_xaxes(range=[0, 25000], title="Frequency (Hz)", row=2, col=1)
 
-        # Tab 3: Channel 1 View
-        self.fig_ch1_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
-            subplot_titles=("<b>Mic 1: A0 (Time Domain)</b>", "<b>Mic 1: A0 (Audio Spectrum)</b>"))
-        self.fig_ch1_view = go.FigureWidget(self.fig_ch1_view)
-        self.fig_ch1_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 Time", row=1, col=1)
-        self.fig_ch1_view.add_scatter(x=[0, 20.48], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
-        self.fig_ch1_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 FFT", row=2, col=1)
-        self.fig_ch1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="audio_t3")
-        self.fig_ch1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
-        self.fig_ch1_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch1_view.update_xaxes(range=[0, 25000], title="Frequency (Hz)", row=2, col=1)
+        # Tab 3: Dedicated Mic 1 View
+        self.fig_mic1_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
+            subplot_titles=("<b>Microphone 1: A0 (Time Domain)</b>", "<b>Microphone 1: A0 (Frequency Spectrum)</b>"))
+        self.fig_mic1_view = go.FigureWidget(self.fig_mic1_view)
+        self.fig_mic1_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 Time", row=1, col=1)
+        self.fig_mic1_view.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
+        self.fig_mic1_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Mic 1 FFT", row=2, col=1)
+        self.fig_mic1_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t3")
+        self.fig_mic1_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
+        self.fig_mic1_view.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=2, col=1)
+        self.fig_mic1_view.update_xaxes(range=[0, 25000], title="Frequency (Hz)", row=2, col=1)
 
-        # Tab 4: Channel 2 View
-        self.fig_ch2_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
-            subplot_titles=("<b>Mic 2: A1 (Time Domain)</b>", "<b>Mic 2: A1 (Audio Spectrum)</b>"))
-        self.fig_ch2_view = go.FigureWidget(self.fig_ch2_view)
-        self.fig_ch2_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2 Time", row=1, col=1)
-        self.fig_ch2_view.add_scatter(x=[0, 20.48], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
-        self.fig_ch2_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="Mic 2 FFT", row=2, col=1)
-        self.fig_ch2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="audio_t4")
-        self.fig_ch2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
-        self.fig_ch2_view.update_yaxes(range=[-110, 0], title="Mag (dBV)", row=2, col=1)
-        self.fig_ch2_view.update_xaxes(range=[0, 25000], title="Frequency (Hz)", row=2, col=1)
+        # Tab 4: Dedicated Mic 2 View
+        self.fig_mic2_view = make_subplots(rows=2, cols=1, vertical_spacing=0.15,
+            subplot_titles=("<b>Microphone 2: A1 (Time Domain)</b>", "<b>Microphone 2: A1 (Frequency Spectrum)</b>"))
+        self.fig_mic2_view = go.FigureWidget(self.fig_mic2_view)
+        self.fig_mic2_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2 Time", row=1, col=1)
+        self.fig_mic2_view.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
+        self.fig_mic2_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.6), name="Mic 2 FFT", row=2, col=1)
+        self.fig_mic2_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), uirevision="t4")
+        self.fig_mic2_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
+        self.fig_mic2_view.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=2, col=1)
+        self.fig_mic2_view.update_xaxes(range=[0, 25000], title="Frequency (Hz)", row=2, col=1)
 
-        self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_ch1_view, self.fig_ch2_view])
-        self.tabs.set_title(0, "🎙 Dual Audio Scope")
+        self.tabs = widgets.Tab(children=[self.fig_dual_scope, self.fig_dual_fft, self.fig_mic1_view, self.fig_mic2_view])
+        self.tabs.set_title(0, "📈 Dual Audio Scope")
         self.tabs.set_title(1, "📊 Dual Audio FFT")
-        self.tabs.set_title(2, "🔀 Mic 1: A0")
-        self.tabs.set_title(3, "🔀 Mic 2: A1")
+        self.tabs.set_title(2, "🎙 Mic 1 (A0)")
+        self.tabs.set_title(3, "🎙 Mic 2 (A1)")
 
     def _setup_callbacks(self):
         self.start_btn.on_click(lambda _: self.start())
@@ -171,16 +164,10 @@ class AudioDashboard:
         self.force_btn.on_click(lambda _: self._on_force_clicked())
         self.clear_log_btn.on_click(lambda _: self._on_clear_log_clicked())
 
-        self.regime_dd.observe(self._on_regime_change, names="value")
         self.trig_level_slider.observe(lambda _: self._update_trig_level(), names="value")
         self.trig_mode_dd.observe(self._on_trig_param_change, names="value")
         self.trig_edge_dd.observe(self._on_trig_param_change, names="value")
         self.trig_src_dd.observe(self._on_trig_param_change, names="value")
-
-    def _on_regime_change(self, change):
-        if self.overlay and hasattr(self.overlay, "set_profile"):
-            info = self.overlay.set_profile(change["new"])
-            print(f"[AudioDashboard] Switched to profile '{change['new'].upper()}': fs={info['sample_rate_hz']/1e3:.1f}kSPS, Δf={info['delta_f_hz']:.2f}Hz, Window={info['time_window_ms']:.1f}ms")
 
     def _update_trig_level(self):
         if self.trigger:
@@ -188,13 +175,13 @@ class AudioDashboard:
 
     def _get_arm_control_word(self) -> int:
         is_falling = (self.trig_edge_dd.value == "Falling")
-        is_ch2 = ("CH2" in self.trig_src_dd.value or "A1" in self.trig_src_dd.value)
+        is_ch2 = ("Mic 2" in self.trig_src_dd.value or "A1" in self.trig_src_dd.value)
         mode = self.trig_mode_dd.value
         
-        ctrl = (1 << 0) | (1 << 3)
+        ctrl = (1 << 0) | (1 << 3)  # Bit 0: Arm, Bit 3: Single Shot
         if is_falling: ctrl |= (1 << 2)
         if mode == "Auto": ctrl |= (1 << 1)
-        if is_ch2: ctrl |= (1 << 5)
+        if is_ch2: ctrl |= (1 << 5)  # Bit 5 = 1 for CH2 (A1), 0 for CH1 (A0)
         return ctrl
 
     def _on_trig_param_change(self, _):
@@ -210,15 +197,45 @@ class AudioDashboard:
         clear_output(wait=True)
         display(widgets.VBox([self.control_panel, self.tabs]))
 
+    @staticmethod
+    def _find_trigger_edge(signal: np.ndarray, threshold: float, is_falling: bool) -> int:
+        if len(signal) < 10:
+            return 0
+        search_limit = min(len(signal) - 1, 200)
+        if is_falling:
+            for i in range(search_limit):
+                if signal[i] >= threshold and signal[i + 1] < threshold:
+                    return i
+        else:
+            for i in range(search_limit):
+                if signal[i] <= threshold and signal[i + 1] > threshold:
+                    return i
+        return 0
+
+    @staticmethod
+    def _vu_bar(vpp: float, vmin: float, vmax: float) -> Tuple[str, bool]:
+        bars = int(min(10, max(0, vpp / 0.25)))
+        is_clipped = (vmin < 0.10 or vmax > 3.10)
+        bar_char = "█" if not is_clipped else "!"
+        return "[" + bar_char * bars + " " * (10 - bars) + "]", is_clipped
+
     def _update_loop(self):
         dma_time = self.overlay.axi_dma_0
         trig = self.trigger
 
+        # Initialize XADC continuous sequencer for audio mode
         if hasattr(self.overlay, "xadc_wiz_0"):
             self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
             self.overlay.xadc_wiz_0.mmio.write(0x324, 0x0202)
 
+        # Set Audio Profile (M=10, 50 kSPS)
+        if self.overlay and hasattr(self.overlay, "set_profile"):
+            self.overlay.set_profile("audio")
+        elif trig:
+            trig.set_decimation(10)
+
+        # Reset DMA 0
         dma_time.mmio.write(0x30, 0x04)
         time.sleep(0.005)
         dma_time.recvchannel.start()
@@ -229,6 +246,7 @@ class AudioDashboard:
 
         buf_time = allocate(shape=(self.packet_size,), dtype="u2")
         dma_armed = False
+        print(f"[AudioDashboard] Passive Microphone Instrument Active (50 kSPS | {self.total_duration_ms:.2f} ms Timebase)")
 
         try:
             while self._is_running:
@@ -252,58 +270,66 @@ class AudioDashboard:
                     # Crop boundary words
                     p_v1 = v_a0[8:-8]
                     p_v2 = v_a1[8:-8]
-
-                    # Spectrum with selected window
-                    win = self.window_dd.value
-                    fs = self.overlay.fs_per_ch
-                    unit = self.fft_unit_dd.value
-
-                    freqs, mag_a0 = self.fft.compute_spectrum(p_v1, unit=unit, window_type=win)
-                    _, mag_a1 = self.fft.compute_spectrum(p_v2, unit=unit, window_type=win)
+                    n = len(p_v1)
 
                     vpp1, vpp2 = float(np.ptp(p_v1)), float(np.ptp(p_v2))
-                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=10.0)
-                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=10.0)
+                    vu1_str, clip1 = self._vu_bar(vpp1, np.min(p_v1), np.max(p_v1))
+                    vu2_str, clip2 = self._vu_bar(vpp2, np.min(p_v2), np.max(p_v2))
 
-                    # Clipping Alerts
-                    clip1 = "[CLIP!]" if (np.min(p_v1) < 0.10 or np.max(p_v1) > 3.10) else "[OK]"
-                    clip2 = "[CLIP!]" if (np.min(p_v2) < 0.10 or np.max(p_v2) > 3.10) else "[OK]"
-                    c_color1 = "#FFA500" if clip1 == "[CLIP!]" else "#00FFCC"
-                    c_color2 = "#FFA500" if clip2 == "[CLIP!]" else "#FF007F"
+                    # Compute Hann-windowed FFT & Peak Pitch
+                    sig_a0 = (p_v1 - np.mean(p_v1)) * np.hanning(n)
+                    sig_a1 = (p_v2 - np.mean(p_v2)) * np.hanning(n)
+                    freqs = np.fft.rfftfreq(n, d=1.0 / self.fs_per_ch)
+                    mag_a0 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a0)) / (n / 2.0), 1e-6))
+                    mag_a1 = 20.0 * np.log10(np.maximum(np.abs(np.fft.rfft(sig_a1)) / (n / 2.0), 1e-6))
 
-                    # Time duration
-                    time_duration_ms = (len(p_v1) / fs) * 1000.0
-                    t_ms = np.linspace(0, time_duration_ms, len(p_v1))
+                    p_f1, p_m1 = StreamingFFT.get_peak_frequency(freqs, mag_a0, min_freq_hz=30.0)
+                    p_f2, p_m2 = StreamingFFT.get_peak_frequency(freqs, mag_a1, min_freq_hz=30.0)
+
                     trig_v = float(self.trig_level_slider.value)
-                    is_trig_a0 = ("CH1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
-
-                    # Frequency Span
-                    max_span = float(self.audio_span_dd.value)
-                    if max_span == 0: max_span = fs / 2.0
-
+                    is_falling = (self.trig_edge_dd.value == "Falling")
+                    is_trig_a0 = ("Mic 1" in self.trig_src_dd.value or "A0" in self.trig_src_dd.value)
                     active_tab = self.tabs.selected_index
+                    max_span = float(self.fft_span_dd.value)
 
-                    # Tab 1: Scope
-                    if active_tab == 0:
+                    # Sub-sample Phase Locking on active trigger channel
+                    trig_src_sig = p_v1 if is_trig_a0 else p_v2
+                    edge_offset = self._find_trigger_edge(trig_src_sig, trig_v, is_falling)
+
+                    # Dynamic 5-Period Auto-Range Timebase
+                    active_f0 = p_f1 if is_trig_a0 else p_f2
+                    if self.autorange_toggle.value and active_f0 > 50.0:
+                        period_ms = 1000.0 / active_f0
+                        show_duration_ms = min(self.total_duration_ms, max(0.01, 5.0 * period_ms))
+                        show_pts = int((show_duration_ms / 1000.0) * self.fs_per_ch)
+                        show_pts = max(16, min(show_pts, len(p_v1) - edge_offset))
+                    else:
+                        show_pts = len(p_v1) - edge_offset
+                        show_duration_ms = (show_pts / self.fs_per_ch) * 1000.0
+
+                    plot_v1 = p_v1[edge_offset : edge_offset + show_pts]
+                    plot_v2 = p_v2[edge_offset : edge_offset + show_pts]
+                    t_ms = np.linspace(0, show_duration_ms, len(plot_v1))
+
+                    if active_tab == 0:  # Tab 1: Dual Audio Scope
                         with self.fig_dual_scope.batch_update():
                             self.fig_dual_scope.data[0].x = t_ms
-                            self.fig_dual_scope.data[0].y = p_v1
+                            self.fig_dual_scope.data[0].y = plot_v1
                             self.fig_dual_scope.data[2].x = t_ms
-                            self.fig_dual_scope.data[2].y = p_v2
+                            self.fig_dual_scope.data[2].y = plot_v2
                             if is_trig_a0:
-                                self.fig_dual_scope.data[1].x = [0, time_duration_ms]
+                                self.fig_dual_scope.data[1].x = [0, show_duration_ms]
                                 self.fig_dual_scope.data[1].y = [trig_v, trig_v]
                                 self.fig_dual_scope.data[1].visible = True
                                 self.fig_dual_scope.data[3].visible = False
                             else:
-                                self.fig_dual_scope.data[3].x = [0, time_duration_ms]
+                                self.fig_dual_scope.data[3].x = [0, show_duration_ms]
                                 self.fig_dual_scope.data[3].y = [trig_v, trig_v]
                                 self.fig_dual_scope.data[3].visible = True
                                 self.fig_dual_scope.data[1].visible = False
-                            self.fig_dual_scope.layout.xaxis2.range = [0, time_duration_ms]
+                            self.fig_dual_scope.layout.xaxis2.range = [0, show_duration_ms]
 
-                    # Tab 2: FFT
-                    elif active_tab == 1:
+                    elif active_tab == 1:  # Tab 2: Dual Audio FFT
                         with self.fig_dual_fft.batch_update():
                             self.fig_dual_fft.data[0].x = freqs
                             self.fig_dual_fft.data[0].y = mag_a0
@@ -317,34 +343,38 @@ class AudioDashboard:
                             self.fig_dual_fft.data[3].text = [f" {p_f2:.1f} Hz"]
                             self.fig_dual_fft.layout.xaxis2.range = [0, max_span]
 
-                    # Tab 3: CH1 View
-                    elif active_tab == 2:
-                        with self.fig_ch1_view.batch_update():
-                            self.fig_ch1_view.data[0].x = t_ms
-                            self.fig_ch1_view.data[0].y = p_v1
-                            self.fig_ch1_view.data[1].x = [0, time_duration_ms]
-                            self.fig_ch1_view.data[1].y = [trig_v, trig_v]
-                            self.fig_ch1_view.data[2].x = freqs
-                            self.fig_ch1_view.data[2].y = mag_a0
-                            self.fig_ch1_view.layout.xaxis.range = [0, time_duration_ms]
-                            self.fig_ch1_view.layout.xaxis2.range = [0, max_span]
+                    elif active_tab == 2:  # Tab 3: Mic 1 View
+                        with self.fig_mic1_view.batch_update():
+                            self.fig_mic1_view.data[0].x = t_ms
+                            self.fig_mic1_view.data[0].y = plot_v1
+                            self.fig_mic1_view.data[1].x = [0, show_duration_ms]
+                            self.fig_mic1_view.data[1].y = [trig_v, trig_v]
+                            self.fig_mic1_view.data[2].x = freqs
+                            self.fig_mic1_view.data[2].y = mag_a0
+                            self.fig_mic1_view.layout.xaxis.range = [0, show_duration_ms]
+                            self.fig_mic1_view.layout.xaxis2.range = [0, max_span]
 
-                    # Tab 4: CH2 View
-                    elif active_tab == 3:
-                        with self.fig_ch2_view.batch_update():
-                            self.fig_ch2_view.data[0].x = t_ms
-                            self.fig_ch2_view.data[0].y = p_v2
-                            self.fig_ch2_view.data[1].x = [0, time_duration_ms]
-                            self.fig_ch2_view.data[1].y = [trig_v, trig_v]
-                            self.fig_ch2_view.data[2].x = freqs
-                            self.fig_ch2_view.data[2].y = mag_a1
-                            self.fig_ch2_view.layout.xaxis.range = [0, time_duration_ms]
-                            self.fig_ch2_view.layout.xaxis2.range = [0, max_span]
+                    elif active_tab == 3:  # Tab 4: Mic 2 View
+                        with self.fig_mic2_view.batch_update():
+                            self.fig_mic2_view.data[0].x = t_ms
+                            self.fig_mic2_view.data[0].y = plot_v2
+                            self.fig_mic2_view.data[1].x = [0, show_duration_ms]
+                            self.fig_mic2_view.data[1].y = [trig_v, trig_v]
+                            self.fig_mic2_view.data[2].x = freqs
+                            self.fig_mic2_view.data[2].y = mag_a1
+                            self.fig_mic2_view.layout.xaxis.range = [0, show_duration_ms]
+                            self.fig_mic2_view.layout.xaxis2.range = [0, max_span]
 
-                    # Status Bar Readouts
+                    # Status VU String with Clipping indicator
+                    c1_tag = " <span style='color:#FF0000;'>(CLIP)</span>" if clip1 else ""
+                    c2_tag = " <span style='color:#FF0000;'>(CLIP)</span>" if clip2 else ""
                     mode_tag = " (LOCKED)" if mode == "Single" else ""
-                    self.readout_ch1.value = f"<span style='color:{c_color1}; font-family:monospace; font-size:13px; font-weight:bold;'>A0: Vpp={vpp1:.2f}V | f0={p_f1:.1f}Hz {clip1}{mode_tag}</span>"
-                    self.readout_ch2.value = f"<span style='color:{c_color2}; font-family:monospace; font-size:13px; font-weight:bold;'>A1: Vpp={vpp2:.2f}V | f0={p_f2:.1f}Hz {clip2}</span>"
+
+                    self.readout_vu.value = (
+                        f"<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>"
+                        f"Mic 1 (A0): {vu1_str} {vpp1:.2f}V{c1_tag} | Mic 2 (A1): {vu2_str} {vpp2:.2f}V{c2_tag} | Pitch f0: {p_f1:.1f} Hz{mode_tag}"
+                        f"</span>"
+                    )
 
                     if mode == "Single": self._single_done = True
                     time.sleep(0.033)
@@ -368,8 +398,8 @@ class AudioDashboard:
         self._single_done = False
 
     def display(self):
-        r1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.clear_log_btn, self.readout_ch1, self.readout_ch2], layout=widgets.Layout(gap="10px", margin="0 0 8px 0"))
-        r2 = widgets.HBox([self.regime_dd, self.window_dd, self.fft_unit_dd, self.audio_span_dd])
-        r3 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_src_dd, self.trig_level_slider, self.trig_level_input])
+        r1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.autorange_toggle, self.clear_log_btn, self.readout_vu], layout=widgets.Layout(gap="10px", margin="0 0 8px 0"))
+        r2 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_src_dd, self.trig_level_slider, self.trig_level_input])
+        r3 = widgets.HBox([self.fft_unit_dd, self.fft_span_dd])
         self.control_panel = widgets.VBox([r1, r2, r3], layout=widgets.Layout(margin="0 0 12px 0"))
         display(widgets.VBox([self.control_panel, self.tabs]))
