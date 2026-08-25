@@ -76,6 +76,7 @@ TARGET_FILES=(
     "notebooks/04_audio_dashboard.ipynb:json"
     "notebooks/05_acoustic_analytic_curves.ipynb:json"
     "notebooks/06_audio_recording_and_playback.ipynb:json"
+    "notebooks/07_pl_hardware_filter_test.ipynb:json"
     "context/generate_sw_summary.sh:bash"
 )
 
