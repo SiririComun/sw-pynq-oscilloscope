@@ -22,6 +22,7 @@ from pynq_oscilloscope.audio_utils import (
     process_raw_recording,
 )
 from pynq_oscilloscope.hw_filter import HardwareFilter
+from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
 
 __version__ = "1.6.0-rc1"
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "AcousticAnalytics",
     "copy_notebooks",
     "HardwareFilter",
+    "AudioFilterDashboard",
 ]

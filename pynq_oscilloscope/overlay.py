@@ -461,6 +461,13 @@ class OscilloscopeOverlay(Overlay):
         dash.display()
         return dash
 
+    def filter_dashboard(self, display_window: int = 1024):
+        """Launches the Real-Time 4-Trace Hardware Filter Dashboard."""
+        from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
+        dash = AudioFilterDashboard(overlay=self, display_window=display_window)
+        dash.display()
+        return dash
+
     def dashboard(self, display_window: int = 1024):
         """Default dashboard launcher (aliases to ad3_dashboard for backwards compatibility)."""
         return self.ad3_dashboard(display_window=display_window)

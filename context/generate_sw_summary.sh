@@ -70,6 +70,7 @@ TARGET_FILES=(
     "pynq_oscilloscope/analytic_dashboard.py:python"
     "pynq_oscilloscope/audio_dashboard.py:python"
     "pynq_oscilloscope/hw_filter.py:python"
+    "pynq_oscilloscope/filter_dashboard.py:python"
     "notebooks/01_ad3_getting_started.ipynb:json"
     "notebooks/02_xadc_getting_started.ipynb:json"
     "notebooks/03_oscilloscope_dashboard.ipynb:json"
