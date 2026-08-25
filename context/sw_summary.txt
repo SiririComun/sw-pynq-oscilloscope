@@ -4,7 +4,7 @@ Git Context & Branch Info:
 Current Branch: feat/continuous-audio-recorder
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder 1f36625 feat(dma): implement double-buffered continuous multi-frame DMA streaming
+* feat/continuous-audio-recorder 11a7b2d feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -13,7 +13,8 @@ Branch Tracking Status:
   main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
 
 Git Commit Graph & History:
-* 1f36625  (HEAD -> feat/continuous-audio-recorder) - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
+* 11a7b2d  (HEAD -> feat/continuous-audio-recorder) - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
+* 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
 *   a09aad0  (tag: v1.5.0, origin/main, origin/HEAD, main) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
 |\  
 | * ffa2f0d  (origin/feat/acoustic-analytics-curves, feat/acoustic-analytics-curves) - 2026-08-22 : docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 | * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
 | * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
 | * 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)
-| * 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)
-| * 188b932  - 2026-08-20 : feat(analytics): add hilbert envelope, sliding stft, sub-hertz pitch, and phase difference engine (SiririComun)```
+| * 33b9a73  - 2026-08-20 : feat(dashboard): implement real-time dual-engine acoustic diagnostic dashboard (SiririComun)```
 
 Files structure: 
 
@@ -1833,44 +1833,74 @@ overlay.py:
 
 ```python
 """
-pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
-Features runtime profile switching, persistent zero-copy CMA buffer pooling, simultaneous sampling, and Jupyter audio playback.
+pynq_oscilloscope.overlay: Unified Custom Overlay for the PYNQ-Z2
+Dual-Channel Multi-Regime Oscilloscope, Spectrum Analyzer & Audio Engine.
 """
 
 from pathlib import Path
-from typing import Union, Optional, Tuple, Dict
+from typing import Union, Optional, Tuple, Dict, Any
 import time
 import numpy as np
-from pynq import Overlay, allocate
+from pynq import Overlay
 
 from pynq_oscilloscope.loader import HardwareLoader
 from pynq_oscilloscope.xadc_dma import StreamingXADC
 from pynq_oscilloscope.fft_dma import StreamingFFT
 from pynq_oscilloscope.hw_trigger import HardwareTrigger
 from pynq_oscilloscope.ad3_wavegen import AD3SignalGenerator
-from pynq_oscilloscope.dashboard import OscilloscopeDashboard
-from pynq_oscilloscope.audio_dashboard import AudioDashboard
-from pynq_oscilloscope.analytic_dashboard import AcousticAnalyticDashboard
+from pynq_oscilloscope.analytics import AcousticAnalytics
+from pynq_oscilloscope.audio_utils import (
+    process_raw_recording,
+    audio_to_wav_bytes,
+)
 
 
 class OscilloscopeOverlay(Overlay):
     """
-    Unified Custom Overlay for the PYNQ-Z2 Multi-Regime Oscilloscope & Audio Spectrum Analyzer.
+    Unified Custom Overlay for the PYNQ-Z2 Dual-Channel Multi-Regime Oscilloscope.
+    Encapsulates XADC DMA, FFT DMA, Hardware Trigger, AD3 Wavegen, and Acoustic Analytics.
     """
 
-    PROFILES = {
-        "oscilloscope": {"m": 1,  "n": 2048, "fs_per_ch": 500_000.0, "desc": "Wideband Lab Scope (0 - 250 kHz)"},
-        "audio":        {"m": 10, "n": 2048, "fs_per_ch": 50_000.0,  "desc": "Full-Band Audio (0 - 25 kHz, Δf=24.4Hz)"},
-        "speech":       {"m": 20, "n": 2048, "fs_per_ch": 25_000.0,  "desc": "Speech / Vocal Band (0 - 12.5 kHz, Δf=12.2Hz)"},
-        "bass_zoom":    {"m": 50, "n": 2048, "fs_per_ch": 10_000.0,  "desc": "Deep Bass Zoom (0 - 5 kHz, Δf=4.88Hz)"}
+    PROFILES: Dict[str, Dict[str, Any]] = {
+        "oscilloscope": {
+            "decim_factor": 1,
+            "decim_bits": 0,
+            "fft_points": 2048,
+            "packet_size": 2048,
+            "sample_rate_hz": 500_000.0,
+            "desc": "Wideband Lab Scope (500 kSPS, 0 - 250 kHz, df = 244.14 Hz)",
+        },
+        "audio": {
+            "decim_factor": 10,
+            "decim_bits": 1,
+            "fft_points": 2048,
+            "packet_size": 2048,
+            "sample_rate_hz": 50_000.0,
+            "desc": "Full-Band Audio (50 kSPS, 0 - 25 kHz, df = 24.41 Hz)",
+        },
+        "speech": {
+            "decim_factor": 20,
+            "decim_bits": 2,
+            "fft_points": 2048,
+            "packet_size": 2048,
+            "sample_rate_hz": 25_000.0,
+            "desc": "Speech / Vocal Formants (25 kSPS, 0 - 12.5 kHz, df = 12.21 Hz)",
+        },
+        "bass_zoom": {
+            "decim_factor": 50,
+            "decim_bits": 3,
+            "fft_points": 2048,
+            "packet_size": 2048,
+            "sample_rate_hz": 10_000.0,
+            "desc": "Deep Bass Zoom (10 kSPS, 0 - 5 kHz, df = 4.88 Hz)",
+        },
     }
 
     def __init__(
         self,
         bitfile_name: Optional[Union[str, Path]] = None,
         version: Optional[str] = None,
-        packet_size: int = 2048,
-        fft_points: int = 2048,
+        profile: str = "oscilloscope",
         **kwargs
     ):
         if bitfile_name is None:
@@ -1880,299 +1910,279 @@ class OscilloscopeOverlay(Overlay):
 
         super().__init__(resolved_bit, **kwargs)
 
-        self.packet_size = packet_size
-        self.fft_points = fft_points
-        self.current_profile = "audio"
-        self.fs_per_ch = 50_000.0
+        self.current_profile = profile
+        prof = self.PROFILES.get(profile, self.PROFILES["oscilloscope"])
 
-        # Persistent CMA Buffer Pool (Zero-Copy)
-        self._buf_time = allocate(shape=(self.packet_size,), dtype="u2")
-        
+        self.packet_size = prof["packet_size"]
+        self.fft_points = prof["fft_points"]
+        self.sample_rate_hz = prof["sample_rate_hz"]
+
+        # Sub-drivers
         self.trigger = HardwareTrigger(self)
-        self.xadc = StreamingXADC(self, default_packet_size=packet_size)
-        self.fft = StreamingFFT(self, fft_points=fft_points, sample_rate_hz=self.fs_per_ch)
+        self.xadc = StreamingXADC(self, default_packet_size=self.packet_size)
+        self.fft = StreamingFFT(self, fft_points=self.fft_points, sample_rate_hz=self.sample_rate_hz)
         self.wavegen = AD3SignalGenerator()
+        self.analytics = AcousticAnalytics(sample_rate_hz=self.sample_rate_hz)
 
-        # Apply default Audio profile (M=10, N=2048)
-        self.set_profile("audio")
+        # Apply initial operating regime profile
+        self.set_profile(profile)
 
-    # =========================================================================
-    # 1. Multi-Regime Profile Switcher
-    # =========================================================================
+    # -------------------------------------------------------------------------
+    # Profile & Hardware Routing Configuration
+    # -------------------------------------------------------------------------
 
-    def set_profile(
+    def set_profile(self, profile_name: str):
+        """
+        Dynamically switches operating regimes on the fly.
+        Reconfigures hardware decimation (M), transform length (N), packet size,
+        and software driver sampling parameters.
+        """
+        if profile_name not in self.PROFILES:
+            valid_keys = list(self.PROFILES.keys())
+            raise ValueError(f"Invalid profile '{profile_name}'. Choose from: {valid_keys}")
+
+        prof = self.PROFILES[profile_name]
+        self.current_profile = profile_name
+        self.packet_size = prof["packet_size"]
+        self.fft_points = prof["fft_points"]
+        self.sample_rate_hz = prof["sample_rate_hz"]
+
+        # Configure hardware registers in axis_trigger_unit
+        self.trigger.set_decimation(prof["decim_factor"])
+        self.trigger.set_fft_length(self.fft_points)
+        self.trigger.set_packet_size(self.packet_size)
+
+        # Update software drivers
+        self.fft.update_configuration(fft_points=self.fft_points, sample_rate_hz=self.sample_rate_hz)
+        self.analytics.sample_rate_hz = self.sample_rate_hz
+
+    def set_trigger_source(self, channel: int = 1):
+        """
+        Selects hardware edge trigger comparator source:
+          • channel = 1: Trigger on Channel 1 (A0 / Vaux1)
+          • channel = 2: Trigger on Channel 2 (A1 / Vaux9)
+        """
+        self.trigger.set_trigger_source(channel=channel)
+
+    def set_fft_source(self, channel: int = 1):
+        """
+        Routes a single clean stream to the hardware xfft_0 core via axis_channel_demux:
+          • channel = 1: Route Channel 1 (A0) to FFT
+          • channel = 2: Route Channel 2 (A1) to FFT
+        """
+        self.trigger.set_fft_source(channel=channel)
+
+    # -------------------------------------------------------------------------
+    # Single-Frame Capture API
+    # -------------------------------------------------------------------------
+
+    def capture_raw(self) -> np.ndarray:
+        """Captures a single raw frame (packet_size words) direct from DMA 0."""
+        return self.xadc.capture_raw()
+
+    def capture(self, crop_startup_samples: int = 0) -> np.ndarray:
+        """Captures physical voltages from Channel 1 (A0)."""
+        v_a0, _ = self.capture_stereo()
+        if crop_startup_samples > 0 and len(v_a0) > crop_startup_samples:
+            v_a0 = v_a0[crop_startup_samples:]
+        return v_a0
+
+    def capture_stereo(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Captures simultaneous, phase-locked physical voltages from both channels:
+          • v_a0: Channel 1 (A0 / Vaux1)
+          • v_a1: Channel 2 (A1 / Vaux9)
+        """
+        return self.xadc.capture_stereo()
+
+    def capture_fft(self, unit: str = "dBV", window: str = "hann") -> Tuple[np.ndarray, np.ndarray]:
+        """Captures the single-sided spectrum (frequencies, magnitudes) from the selected FFT channel."""
+        return self.fft.capture_spectrum(unit=unit, window=window)
+
+    def capture_both(
         self,
-        mode: str = "audio",
-        decimation: Optional[int] = None,
-        fft_size: Optional[int] = None,
-        packet_size: Optional[int] = None
-    ) -> Dict:
+        unit: str = "dBV",
+        window: str = "hann",
+        crop_startup_samples: int = 0,
+        timeout: float = 1.0
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Dynamically configures Decimator (M), FFT Length (N), and Packetizer boundaries.
-
-        :param mode: Profile name: 'oscilloscope', 'audio', 'speech', or 'bass_zoom'.
-        :param decimation: Manual override for decimation factor M (1, 10, 20, 50).
-        :param fft_size: Manual override for FFT transform length N (512, 1024, 2048).
-        :param packet_size: Manual override for DMA packet size.
+        Synchronously captures both Time-Domain channels and Frequency-Domain spectrum:
+        Returns: (voltages_a0, voltages_a1, freqs_hz, mags)
         """
-        mode_clean = mode.lower().strip()
-        base_cfg = self.PROFILES.get(mode_clean, self.PROFILES["audio"])
-        
-        m_val = decimation if decimation is not None else base_cfg["m"]
-        n_val = fft_size if fft_size is not None else base_cfg["n"]
-        pkt_val = packet_size if packet_size is not None else n_val
-
-        # 1. Update Hardware Registers
-        self.trigger.set_decimation(m_val)
-        self.trigger.set_fft_config(n_points=n_val, forward=True)
-        self.trigger.set_packet_size(pkt_val)
-
-        # 2. Re-allocate persistent CMA buffer ONLY if packet size changed
-        if self._buf_time is None or len(self._buf_time) != pkt_val:
-            if self._buf_time is not None:
+        # Ensure channels are idle before arming
+        t_wait = time.time()
+        while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle:
+            time.sleep(0.001)
+            if time.time() - t_wait > timeout:
                 try:
-                    self._buf_time.close()
+                    self.xadc.dma.mmio.write(0x30, 0x04)
+                    self.fft.dma.mmio.write(0x30, 0x04)
+                    time.sleep(0.01)
+                    self.xadc.dma.recvchannel.start()
+                    self.fft.dma.recvchannel.start()
                 except Exception:
                     pass
-            self._buf_time = allocate(shape=(pkt_val,), dtype="u2")
-
-        # 3. Update Driver State
-        self.current_profile = mode_clean
-        self.packet_size = pkt_val
-        self.fft_points = n_val
-        self.fs_per_ch = 500_000.0 / m_val
-
-        # 4. Update FFT Grid
-        self.fft.fft_points = n_val
-        self.fft.num_bins = n_val // 2
-        self.fft.sample_rate_hz = self.fs_per_ch
-        self.fft.delta_f = self.fs_per_ch / n_val
-        self.fft.freq_axis = np.arange(self.fft.num_bins) * self.fft.delta_f
-
-        info = {
-            "mode": mode_clean,
-            "decimation_M": m_val,
-            "sample_rate_hz": self.fs_per_ch,
-            "time_window_ms": ((pkt_val // 2) / self.fs_per_ch) * 1000.0,
-            "fft_points_N": n_val,
-            "delta_f_hz": self.fft.delta_f,
-            "max_frequency_hz": self.fs_per_ch / 2.0
-        }
-        return info
-
-    def get_profile_info(self) -> Dict:
-        """Returns the active operating parameters."""
-        pkt = self.trigger.get_packet_size()
-        return {
-            "mode": self.current_profile,
-            "decimation_M": self.trigger.get_decimation(),
-            "sample_rate_hz": self.fs_per_ch,
-            "time_window_ms": ((pkt // 2) / self.fs_per_ch) * 1000.0,
-            "fft_points_N": self.trigger.get_fft_length(),
-            "delta_f_hz": self.fft.delta_f,
-            "max_frequency_hz": self.fs_per_ch / 2.0
-        }
-
-    # =========================================================================
-    # 2. Synchronized Audio & Stereo Capture (Persistent Zero-Copy DMA)
-    # =========================================================================
-
-    def capture_stereo(
-        self,
-        crop_startup_samples: int = 8,
-        timeout: float = 2.0
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Captures simultaneous dual-channel decimated time-domain waveforms (Ch1 on A0, Ch2 on A1)
-        using the persistent pre-allocated CMA buffer pool and simultaneous XADC conversion.
-        """
-        # 1. Initialize XADC into Continuous Sequence Mode on Vaux1 and Vaux9
-        if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0x2000)  # DRP 0x41: Continuous Sequence Mode
-            self.xadc_wiz_0.mmio.write(0x320, 0x0000)  # DRP 0x48: Disable internal channels
-            self.xadc_wiz_0.mmio.write(0x324, 0x0202)  # DRP 0x49: Enable Vaux1 (A0) & Vaux9 (A1)
-
-        # 2. Reset DMA 0 channel
-        self.axi_dma_0.mmio.write(0x30, 0x04)
-        time.sleep(0.002)
-        self.axi_dma_0.recvchannel.start()
-
-        # 3. Queue persistent receive buffer
-        self.axi_dma_0.recvchannel.transfer(self._buf_time)
-
-        # 4. Arm Hardware Trigger
-        self.trigger.arm()
-
-        # 5. Non-blocking Poll with Timeout
-        start = time.time()
-        while time.time() - start < timeout:
-            if self.axi_dma_0.recvchannel.idle:
-                raw_samples = np.array(self._buf_time)
-                
-                # De-interleave: Even = A0 (Ch1), Odd = A1 (Ch2)
-                raw_ch1 = raw_samples[0::2]
-                raw_ch2 = raw_samples[1::2]
-
-                voltages_ch1 = (raw_ch1 >> 4) * (3.3 / 4095.0)
-                voltages_ch2 = (raw_ch2 >> 4) * (3.3 / 4095.0)
-
-                # Crop boundary samples
-                if crop_startup_samples > 0 and len(voltages_ch1) > (2 * crop_startup_samples):
-                    voltages_ch1 = voltages_ch1[crop_startup_samples:-crop_startup_samples]
-                    voltages_ch2 = voltages_ch2[crop_startup_samples:-crop_startup_samples]
-
-                return voltages_ch1, voltages_ch2
-            time.sleep(0.005)
-
-        raise TimeoutError(f"Capture timed out after {timeout} seconds. Check trigger threshold or mode.")
-
-    def capture(self, crop_startup_samples: int = 8) -> np.ndarray:
-        """Captures Channel 1 (A0)."""
-        v_ch1, _ = self.capture_stereo(crop_startup_samples=crop_startup_samples)
-        return v_ch1
-
-    def capture_fft(self, unit: str = "dBV", timeout: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Captures hardware single-channel FFT spectrum from the active channel selected in trigger
-        using non-blocking DMA synchronization.
-        """
-        # 1. Initialize XADC sequencer (0x2000)
-        if hasattr(self, "xadc_wiz_0"):
-            self.xadc_wiz_0.mmio.write(0x304, 0x2000)
-            self.xadc_wiz_0.mmio.write(0x320, 0x0000)
-            self.xadc_wiz_0.mmio.write(0x324, 0x0202)
-
-        # 2. Match FFT transform length to demuxed channel frame size (N = packet_size / 2)
-        fft_pts = self.packet_size // 2
-        self.trigger.set_fft_config(n_points=fft_pts, forward=True)
-
-        # 3. Reset and start both DMA channels
-        self.axi_dma_0.mmio.write(0x30, 0x04)
-        self.axi_dma_1.mmio.write(0x30, 0x04)
-        time.sleep(0.002)
-        self.axi_dma_0.recvchannel.start()
-        self.axi_dma_1.recvchannel.start()
-
-        # 4. Queue receive buffers
-        buf_fft = allocate(shape=(fft_pts,), dtype="u2")
-        self.axi_dma_0.recvchannel.transfer(self._buf_time)
-        self.axi_dma_1.recvchannel.transfer(buf_fft)
-
-        # 5. Arm Hardware Trigger
-        self.trigger.arm()
-
-        # 6. Non-blocking poll with timeout
-        start = time.time()
-        ok = False
-        while time.time() - start < timeout:
-            if self.axi_dma_1.recvchannel.idle:
-                ok = True
                 break
-            time.sleep(0.005)
 
-        if not ok:
-            buf_fft.close()
-            raise TimeoutError(f"PL FFT capture timed out after {timeout} seconds.")
+        # 1. Queue both DMAs FIRST
+        self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
+        self.fft.dma.recvchannel.transfer(self.fft._buffer)
 
-        raw_fft = np.array(buf_fft, copy=True)
-        buf_fft.close()
+        # 2. Arm Hardware Trigger in Auto Mode
+        self.trigger.arm()
 
-        # 7. Extract single-sided spectrum (num_bins = fft_pts / 2)
-        num_bins = fft_pts // 2
-        raw_half = raw_fft[:num_bins].astype(np.float64)
+        # 3. Wait for hardware completion
+        self.xadc.dma.recvchannel.wait()
+        self.fft.dma.recvchannel.wait()
 
-        # Calibrated CORDIC fixed-point magnitude
-        linear_volts = (raw_half / 32768.0) * 3.3
+        # 4. Process Time-Domain stereo samples
+        raw_interleaved = np.array(self.xadc._buffer)
+        raw_ch1 = raw_interleaved[0::2]
+        raw_ch2 = raw_interleaved[1::2]
+        v_a0 = (raw_ch1 >> 4) * (3.3 / 4095.0)
+        v_a1 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        unit_clean = unit.strip().upper()
-        if unit_clean == "DBV":
-            mags = 20.0 * np.log10(np.maximum(linear_volts, 1e-6))
-        elif unit_clean == "DBFS":
-            mags = 20.0 * np.log10(np.maximum(raw_half / 32768.0, 1e-6))
-        else:
-            mags = linear_volts * 1000.0
+        if crop_startup_samples > 0 and len(v_a0) > crop_startup_samples:
+            v_a0 = v_a0[crop_startup_samples:]
+            v_a1 = v_a1[crop_startup_samples:]
 
-        delta_f = self.fs_per_ch / float(fft_pts)
-        freqs = np.arange(num_bins) * delta_f
+        # 5. Process Frequency-Domain spectrum
+        freqs, mags = self.fft.process_buffer(self.fft._buffer, unit=unit, window=window)
 
-        return freqs, mags
+        return v_a0, v_a1, freqs, mags
 
-    # =========================================================================
-    # 3. Jupyter Audio Playback
-    # =========================================================================
-
-    def play_audio(self, channel: int = 1, custom_data: Optional[np.ndarray] = None):
+    def capture_stereo_analytic(self) -> Dict[str, Any]:
         """
-        Plays captured microphone audio directly inside the Jupyter Notebook.
-        
-        :param channel: 1 for Mic 1 (A0), 2 for Mic 2 (A1).
-        :param custom_data: Optional numpy array of audio samples to play instead.
+        Captures a synchronized stereo frame and executes the complete mathematical
+        Acoustic Analytics pipeline (Hilbert analytic envelopes, ILD, instantaneous phase difference).
         """
-        try:
-            from IPython.display import Audio, display
-        except ImportError:
-            raise RuntimeError("IPython is required for audio playback.")
+        v_a0, v_a1 = self.capture_stereo()
+        analytic_results = self.analytics.analyze_stereo(v_a0, v_a1)
+        analytic_results["raw_a0"] = v_a0
+        analytic_results["raw_a1"] = v_a1
+        return analytic_results
+
+    # -------------------------------------------------------------------------
+    # Multi-Second Audio Recording & Jupyter Playback API
+    # -------------------------------------------------------------------------
+
+    def record_audio(
+        self,
+        duration_sec: float = 3.0,
+        channel: int = 1,
+        profile: Optional[str] = None,
+        auto_gain: bool = False
+    ) -> np.ndarray:
+        """
+        Records multi-second continuous audio from physical microphone/AD3 input
+        using ping-pong double-buffered DMA streaming.
+
+        :param duration_sec: Length of recording in seconds (e.g. 1.0 to 10.0s).
+        :param channel: 1 for Channel 1 (A0), 2 for Channel 2 (A1), or 0 for Stereo tuple.
+        :param profile: Operating profile ('audio', 'speech', 'bass_zoom'). Defaults to current active profile.
+        :param auto_gain: If True, automatically scales volume to maximize dynamic range without clipping.
+        :return: Normalized float64 audio array in range [-1.0, 1.0].
+        """
+        if profile is not None:
+            self.set_profile(profile)
+
+        fs = self.sample_rate_hz
+        target_samples = int(duration_sec * fs)
+
+        # In interleaved stereo mode, each 2048-word frame contains 1024 samples per channel
+        samples_per_frame_per_ch = self.packet_size // 2
+        num_frames = int(np.ceil(target_samples / samples_per_frame_per_ch))
+
+        # Continuous double-buffered hardware DMA streaming
+        raw_interleaved = self.xadc.capture_continuous_raw(
+            num_frames=num_frames,
+            trigger_unit=self.trigger
+        )
+
+        # DSP Conditioning (De-interleaving, voltage conversion, DC removal, normalization)
+        audio = process_raw_recording(
+            raw_interleaved=raw_interleaved,
+            channel=channel,
+            target_samples=target_samples,
+            auto_gain=auto_gain
+        )
+        return audio
+
+    def play_audio(
+        self,
+        duration_sec: float = 3.0,
+        channel: int = 1,
+        custom_data: Optional[np.ndarray] = None,
+        sample_rate_hz: Optional[int] = None,
+        auto_gain: bool = True
+    ):
+        """
+        Records live audio or takes custom audio data, encodes to in-memory WAV,
+        and renders the interactive Jupyter HTML5 audio player widget.
+
+        :param duration_sec: Duration to record if custom_data is None.
+        :param channel: Channel to record (1=A0, 2=A1, 0=Stereo).
+        :param custom_data: Optional pre-recorded or filtered float array [-1.0, 1.0].
+        :param sample_rate_hz: Sample rate (defaults to active overlay sample rate).
+        :param auto_gain: Normalize peak audio volume.
+        :return: IPython.display.Audio widget.
+        """
+        from IPython.display import display, Audio
 
         if custom_data is not None:
-            audio_samples = custom_data
+            audio_data = custom_data
+            sr = int(sample_rate_hz or self.sample_rate_hz)
         else:
-            v_a0, v_a1 = self.capture_stereo()
-            audio_samples = v_a0 if channel == 1 else v_a1
+            audio_data = self.record_audio(
+                duration_sec=duration_sec,
+                channel=channel,
+                auto_gain=auto_gain
+            )
+            sr = int(self.sample_rate_hz)
 
-        ac_signal = audio_samples - np.mean(audio_samples)
-        max_val = np.max(np.abs(ac_signal))
-        normalized_audio = (ac_signal / max_val) if max_val > 1e-4 else ac_signal
-        display(Audio(normalized_audio, rate=int(self.fs_per_ch)))
+        num_channels = 2 if (audio_data.ndim == 2 and audio_data.shape[1] == 2) else 1
+        wav_bytes = audio_to_wav_bytes(audio_data, sample_rate_hz=sr, num_channels=num_channels)
 
-    # =========================================================================
-    # 4. Interactive Dashboards
-    # =========================================================================
+        player = Audio(data=wav_bytes, rate=sr, autoplay=False)
+        display(player)
+        return player
 
-    def dashboard(self, display_window: int = 1024):
-        """Launches the general Oscilloscope Dashboard with AD3 integration."""
-        dash = OscilloscopeDashboard(
-            overlay=self,
-            packet_size=self.packet_size,
-            fft_points=self.fft_points,
-            display_window=display_window
-        )
-        dash.display()
-        return dash
+    # -------------------------------------------------------------------------
+    # Interactive Dashboard Launchers
+    # -------------------------------------------------------------------------
 
     def ad3_dashboard(self, display_window: int = 1024):
-        """
-        Flagship Academic AD3 Laboratory Oscilloscope & Waveform Analyzer.
-        Features 10 Hz - 1 MHz signal generator controls and live aliasing exploration.
-        """
-        return self.dashboard(display_window=display_window)
-
-    def audio_dashboard(self):
-        """Launches the dedicated Audio & Microphone Dashboard."""
-        dash = AudioDashboard(
-            overlay=self,
-            packet_size=self.packet_size,
-            fft_points=self.fft_points
-        )
+        """Launches the Academic Dual Laboratory Scope & Aliasing Explorer."""
+        from pynq_oscilloscope.dashboard import OscilloscopeDashboard
+        dash = OscilloscopeDashboard(overlay=self, display_window=display_window)
         dash.display()
         return dash
 
-    def analytic_dashboard(self):
-        """Launches the dedicated Real-Time Acoustic Analytics & Spectrogram Dashboard."""
-        dash = AcousticAnalyticDashboard(
-            overlay=self,
-            packet_size=self.packet_size,
-            fs_per_ch=self.fs_per_ch
-        )
+    def audio_dashboard(self, display_window: int = 1024):
+        """Launches the Dedicated Passive Microphone Instrument."""
+        from pynq_oscilloscope.dashboard import AudioDashboard
+        dash = AudioDashboard(overlay=self, display_window=display_window)
         dash.display()
         return dash
+
+    def analytic_dashboard(self, display_window: int = 1024):
+        """Launches the Multi-Domain Acoustic Analytics & Spectrogram Engine."""
+        from pynq_oscilloscope.analytic_dashboard import AcousticAnalyticDashboard
+        dash = AcousticAnalyticDashboard(overlay=self, display_window=display_window)
+        dash.display()
+        return dash
+
+    def dashboard(self, display_window: int = 1024):
+        """Default dashboard launcher (aliases to ad3_dashboard for backwards compatibility)."""
+        return self.ad3_dashboard(display_window=display_window)
+
+    # -------------------------------------------------------------------------
+    # Clean Shutdown & Context Management
+    # -------------------------------------------------------------------------
 
     def close(self):
-        if hasattr(self, "_buf_time") and self._buf_time is not None:
-            try:
-                self._buf_time.close()
-                self._buf_time = None
-            except Exception:
-                pass
+        """Clean hardware shutdown and DMA/Wavegen handle release."""
         if hasattr(self, "xadc") and self.xadc is not None:
             self.xadc.close()
         if hasattr(self, "fft") and self.fft is not None:
