@@ -4,7 +4,7 @@ Provides Hilbert analytic envelope extraction, Short-Time Energy (STE), Inter-au
 sliding STFT spectrograms, sub-Hertz pitch interpolation, and instantaneous phase tracking.
 """
 
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Dict, Any
 import numpy as np
 
 
@@ -13,6 +13,12 @@ class AcousticAnalytics:
     High-performance, zero-copy acoustic signal analytics engine.
     Provides mathematical extraction for Amplitude vs. Time and Frequency vs. Time metrics.
     """
+
+    def __init__(self, sample_rate_hz: float = 50_000.0):
+        """
+        Initialize the analytics engine with an active sampling rate.
+        """
+        self.sample_rate_hz = float(sample_rate_hz)
 
     @staticmethod
     def hilbert_transform(x: np.ndarray) -> np.ndarray:
@@ -208,12 +214,6 @@ class AcousticAnalytics:
         """
         Extracts dominant fundamental pitch frequency with sub-Hertz accuracy (±0.2 Hz)
         using three-point parabolic interpolation on spectral peaks.
-        
-        :param freqs: 1D frequency axis array in Hz.
-        :param mags: 1D magnitude array in dB.
-        :param min_freq_hz: Minimum frequency threshold to ignore 0 Hz DC bins.
-        :param max_freq_hz: Optional upper band limit.
-        :return: (peak_freq_hz, peak_mag_dB).
         """
         valid_mask = (freqs >= min_freq_hz)
         if max_freq_hz is not None:
@@ -226,7 +226,6 @@ class AcousticAnalytics:
 
         k = int(valid_indices[np.argmax(mags[valid_indices])])
 
-        # Parabolic peak interpolation
         if k <= 0 or k >= len(mags) - 1:
             return float(freqs[k]), float(mags[k])
 
@@ -246,3 +245,22 @@ class AcousticAnalytics:
         interp_mag = float(beta - 0.25 * (alpha - gamma) * delta)
 
         return interp_freq, interp_mag
+
+    def analyze_stereo(self, sig_a0: np.ndarray, sig_a1: np.ndarray) -> Dict[str, Any]:
+        """
+        Executes comprehensive stereo analytics on Channel 1 (A0) and Channel 2 (A1).
+        """
+        env_a0 = self.extract_analytic_envelope(sig_a0)
+        env_a1 = self.extract_analytic_envelope(sig_a1)
+        ild_db, ste_a0, ste_a1, ild_idx = self.compute_ild(sig_a0, sig_a1)
+        phase_diff = self.compute_instantaneous_phase_diff(sig_a0, sig_a1)
+
+        return {
+            "env_a0": env_a0,
+            "env_a1": env_a1,
+            "ild_db": ild_db,
+            "ste_a0": ste_a0,
+            "ste_a1": ste_a1,
+            "ild_idx": ild_idx,
+            "phase_diff_deg": phase_diff,
+        }

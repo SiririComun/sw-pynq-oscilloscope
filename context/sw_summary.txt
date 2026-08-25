@@ -4,7 +4,7 @@ Git Context & Branch Info:
 Current Branch: feat/continuous-audio-recorder
 Branch Tracking Status:
   feat/acoustic-analytics-curves ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/continuous-audio-recorder 19fe636 feat(overlay): integrate multi-second record_audio and in-memory play_audio methods
+* feat/continuous-audio-recorder f08d33f [origin/feat/continuous-audio-recorder] feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook
   feat/dual-xadc                 e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
@@ -13,7 +13,8 @@ Branch Tracking Status:
   main                           a09aad0 [origin/main] merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum
 
 Git Commit Graph & History:
-* 19fe636  (HEAD -> feat/continuous-audio-recorder) - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
+* f08d33f  (HEAD -> feat/continuous-audio-recorder, origin/feat/continuous-audio-recorder) - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
+* 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
 * 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
 * 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
 *   a09aad0  (tag: v1.5.0, origin/main, origin/HEAD, main) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 | * 0f8f0e5  - 2026-08-21 : fix(fft): implement non-blocking hardware capture_fft and update notebook 04 to scope profile (SiririComun)
 | * 8c4dbbc  - 2026-08-21 : fix(wavegen): correct device enumeration in AD3SignalGenerator has_device (SiririComun)
 | * 20db235  - 2026-08-20 : feat(dashboard): declutter analytic dashboard with dedicated 3-strip channel stacks and decoupled axes (SiririComun)
-| * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)
-| * 3a8bd61  - 2026-08-20 : test(notebook): add 06 acoustic analytic curves diagnostic notebook and update context (SiririComun)```
+| * d7ce05b  - 2026-08-20 : fix(sw): correct XADC continuous sequencer initialization to 0x2000 and ensure complete analytics imports (SiririComun)```
 
 Files structure: 
 
@@ -2209,7 +2209,7 @@ Provides Hilbert analytic envelope extraction, Short-Time Energy (STE), Inter-au
 sliding STFT spectrograms, sub-Hertz pitch interpolation, and instantaneous phase tracking.
 """
 
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Dict, Any
 import numpy as np
 
 
@@ -2218,6 +2218,12 @@ class AcousticAnalytics:
     High-performance, zero-copy acoustic signal analytics engine.
     Provides mathematical extraction for Amplitude vs. Time and Frequency vs. Time metrics.
     """
+
+    def __init__(self, sample_rate_hz: float = 50_000.0):
+        """
+        Initialize the analytics engine with an active sampling rate.
+        """
+        self.sample_rate_hz = float(sample_rate_hz)
 
     @staticmethod
     def hilbert_transform(x: np.ndarray) -> np.ndarray:
@@ -2413,12 +2419,6 @@ class AcousticAnalytics:
         """
         Extracts dominant fundamental pitch frequency with sub-Hertz accuracy (±0.2 Hz)
         using three-point parabolic interpolation on spectral peaks.
-        
-        :param freqs: 1D frequency axis array in Hz.
-        :param mags: 1D magnitude array in dB.
-        :param min_freq_hz: Minimum frequency threshold to ignore 0 Hz DC bins.
-        :param max_freq_hz: Optional upper band limit.
-        :return: (peak_freq_hz, peak_mag_dB).
         """
         valid_mask = (freqs >= min_freq_hz)
         if max_freq_hz is not None:
@@ -2431,7 +2431,6 @@ class AcousticAnalytics:
 
         k = int(valid_indices[np.argmax(mags[valid_indices])])
 
-        # Parabolic peak interpolation
         if k <= 0 or k >= len(mags) - 1:
             return float(freqs[k]), float(mags[k])
 
@@ -2450,7 +2449,26 @@ class AcousticAnalytics:
         interp_freq = float(freqs[k] + delta * delta_f)
         interp_mag = float(beta - 0.25 * (alpha - gamma) * delta)
 
-        return interp_freq, interp_mag```
+        return interp_freq, interp_mag
+
+    def analyze_stereo(self, sig_a0: np.ndarray, sig_a1: np.ndarray) -> Dict[str, Any]:
+        """
+        Executes comprehensive stereo analytics on Channel 1 (A0) and Channel 2 (A1).
+        """
+        env_a0 = self.extract_analytic_envelope(sig_a0)
+        env_a1 = self.extract_analytic_envelope(sig_a1)
+        ild_db, ste_a0, ste_a1, ild_idx = self.compute_ild(sig_a0, sig_a1)
+        phase_diff = self.compute_instantaneous_phase_diff(sig_a0, sig_a1)
+
+        return {
+            "env_a0": env_a0,
+            "env_a1": env_a1,
+            "ild_db": ild_db,
+            "ste_a0": ste_a0,
+            "ste_a1": ste_a1,
+            "ild_idx": ild_idx,
+            "phase_diff_deg": phase_diff,
+        }```
 
 audio_utils.py:
 
