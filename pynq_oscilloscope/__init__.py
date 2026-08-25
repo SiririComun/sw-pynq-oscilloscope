@@ -13,6 +13,14 @@ from pynq_oscilloscope.dashboard import OscilloscopeDashboard
 from pynq_oscilloscope.audio_dashboard import AudioDashboard
 from pynq_oscilloscope.analytics import AcousticAnalytics
 from pynq_oscilloscope.notebooks import copy_notebooks
+from pynq_oscilloscope.audio_utils import (
+    deinterleave_stereo,
+    raw_to_voltages,
+    remove_dc_offset,
+    normalize_audio,
+    audio_to_wav_bytes,
+    process_raw_recording,
+)
 
 __version__ = "1.5.0"
 __all__ = [
