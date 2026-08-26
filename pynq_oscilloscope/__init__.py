@@ -24,7 +24,7 @@ from pynq_oscilloscope.audio_utils import (
 from pynq_oscilloscope.hw_filter import HardwareFilter
 from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
 
-__version__ = "1.6.0-rc1"
+__version__ = "1.6.0-rc2"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",

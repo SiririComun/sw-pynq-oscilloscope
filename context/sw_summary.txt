@@ -9,12 +9,13 @@ Branch Tracking Status:
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/pl-freq-filter-ifft       a28afec fix(filter_dashboard): resolve indentation error and complete full 4-tab dashboard
+* feat/pl-freq-filter-ifft       8d285b6 fix(overlay): calibrate IFFT amplitude gain and update notebook 07 test suite
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
   main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* a28afec  (HEAD -> feat/pl-freq-filter-ifft, origin/feat/pl-freq-filter-ifft) - 2026-08-25 : fix(filter_dashboard): resolve indentation error and complete full 4-tab dashboard (SiririComun)
+* 8d285b6  (HEAD -> feat/pl-freq-filter-ifft, origin/feat/pl-freq-filter-ifft) - 2026-08-26 : fix(overlay): calibrate IFFT amplitude gain and update notebook 07 test suite (SiririComun)
+* a28afec  - 2026-08-25 : fix(filter_dashboard): resolve indentation error and complete full 4-tab dashboard (SiririComun)
 * 0ec5816  - 2026-08-25 : feat(filter_dashboard): complete full 4-tab filter dashboard with live presets and auto-ranging (SiririComun)
 * 9cc7e7d  - 2026-08-25 : feat(dashboard): add AudioFilterDashboard with live cutoff sliders and 4-trace display (SiririComun)
 * b98df77  - 2026-08-25 : feat(notebooks): add 07_pl_hardware_filter_test verification notebook (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 * 065ee46  - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
 * f08d33f  - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
 * 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
-* 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
-* 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)```
+* 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)```
 
 Files structure: 
 
@@ -142,7 +142,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.6.0-rc1"
+    "version": "v1.6.0-rc2"
 }```
 
 setup.py:
@@ -158,7 +158,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.6.0-rc1",
+    version="1.6.0-rc2",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -225,7 +225,7 @@ from pynq_oscilloscope.audio_utils import (
 from pynq_oscilloscope.hw_filter import HardwareFilter
 from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
 
-__version__ = "1.6.0-rc1"
+__version__ = "1.6.0-rc2"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
@@ -3729,6 +3729,7 @@ class HardwareFilter:
     # 2. Filter Configuration Methods
     # =========================================================================
 
+
     def set_passband(
         self,
         low_hz: float,
@@ -3736,6 +3737,7 @@ class HardwareFilter:
         mode: str = "bandpass",
         enable: bool = True
     ):
+
         """
         Configures the hardware frequency filter cutoffs in physical Hertz.
 
@@ -3744,28 +3746,26 @@ class HardwareFilter:
         :param mode: 'lowpass', 'highpass', 'bandpass', or 'notch'.
         :param enable: If True, engages the filter immediately.
         """
+
         k_start = self.freq_to_bin(low_hz)
         k_stop = self.freq_to_bin(high_hz)
 
-        # Ensure k_start <= k_stop
         if k_start > k_stop:
             k_start, k_stop = k_stop, k_start
 
         mode_clean = mode.lower().strip()
-        if mode_clean not in self.MODE_MAP:
-            raise ValueError(f"Invalid mode '{mode}'. Choose from: {list(self.MODE_MAP.keys())}")
+        mode_bits = self.MODE_MAP.get(mode_clean, self.MODE_LOWPASS)
 
-        mode_bits = self.MODE_MAP[mode_clean]
-
-        # Write cutoffs
-        self.mmio.write(self.REG_BIN_START, k_start)
-        self.mmio.write(self.REG_BIN_STOP, k_stop)
+        # Write cutoffs and FFT length
+        self.mmio.write(self.REG_BIN_START, k_start) # 0x04
+        self.mmio.write(self.REG_BIN_STOP, k_stop)   # 0x08
+        self.mmio.write(0x0C, self.fft_points)       # 0x0C: REG_FFT_LEN
 
         # Write control register
         ctrl = mode_bits
         if enable:
             ctrl |= self.BIT_FILTER_EN
-        self.mmio.write(self.REG_CTRL, ctrl)
+        self.mmio.write(self.REG_CTRL, ctrl)         # 0x00
 
     def set_lowpass(self, cutoff_hz: float = 250.0):
         """Configures Lowpass / Bass filter mode (passes 0 Hz up to cutoff_hz)."""
