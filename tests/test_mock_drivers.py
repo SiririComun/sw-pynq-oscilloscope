@@ -160,3 +160,41 @@ def test_notebooks_json_validity():
             assert "cells" in data, f"{nb_path.name} missing 'cells' key"
             assert "nbformat" in data, f"{nb_path.name} missing 'nbformat' key"
             assert len(data["cells"]) > 0, f"{nb_path.name} has no cells"
+# =============================================================================
+# 6. Hardware Pinning & Release Asset Integrity Gate
+# =============================================================================
+
+def test_hardware_json_pinning_integrity():
+    """
+    Verifies that hardware.json defines a valid repository and version tag,
+    and checks that pynq_z2.bit and pynq_z2.hwh exist on GitHub Releases.
+    """
+    import urllib.request
+    import urllib.error
+
+    repo_root = Path(__file__).resolve().parent.parent
+    hw_config_path = repo_root / "hardware.json"
+    assert hw_config_path.exists(), "hardware.json is missing from repository root!"
+
+    with open(hw_config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    repo = config.get("repo")
+    version = config.get("version")
+
+    assert repo, "hardware.json must define 'repo'"
+    assert version, "hardware.json must define 'version'"
+    assert version.startswith("v"), f"Version tag '{version}' must start with 'v'"
+
+    # Verify that both release assets exist and are reachable
+    base_url = f"https://github.com/{repo}/releases/download/{version}"
+    for asset in ["pynq_z2.bit", "pynq_z2.hwh"]:
+        url = f"{base_url}/{asset}"
+        req = urllib.request.Request(url, method="HEAD")
+        try:
+            with urllib.request.urlopen(req, timeout=8) as response:
+                assert response.status in (200, 302), f"Asset {asset} unreachable at {url}"
+        except urllib.error.HTTPError as e:
+            assert e.code in (200, 302), f"Asset {url} returned HTTP {e.code}"
+        except urllib.error.URLError:
+            pytest.skip("Network unreachable, skipping remote release asset verification")
