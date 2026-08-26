@@ -1,19 +1,19 @@
-# Real-Time Dual-Channel Multi-Regime Oscilloscope & Audio Spectrum Analyzer
+# Real-Time Dual-Channel Multi-Regime Oscilloscope, Audio Spectrum Analyzer & Hardware Filter Engine
 
 [![PyPI Version](https://img.shields.io/pypi/v/pynq-oscilloscope.svg)](https://pypi.org/project/pynq-oscilloscope/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/SiririComun/sw-pynq-oscilloscope/blob/main/LICENSE)
-[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.5.0-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
+[![Hardware Overlay](https://img.shields.io/badge/Hardware-hw--xadc--dma--overlays%20v1.6.0-orange.svg)](https://github.com/SiririComun/hw-xadc-dma-overlays)
 [![Board Support](https://img.shields.io/badge/Board-PYNQ--Z2-green.svg)](https://tul.com.tw/ProductsPYNQ-Z2.html)
 
-A high-performance, dark-mode real-time **Dual-Channel Multi-Regime Oscilloscope, Audio Spectrum Analyzer, and Acoustic Analytics Engine** running natively on PYNQ Linux platforms.
+A high-performance, dark-mode real-time **Dual-Channel Multi-Regime Oscilloscope, Audio Spectrum Analyzer, Acoustic Analytics Engine, and Hardware-Accelerated Frequency Filter / IFFT Instrument** running natively on PYNQ Linux platforms.
 
-Features **true simultaneous dual-ADC parallel sampling ($0.00\,\mu\text{s}$ inter-channel skew)**, **runtime-selectable operating regimes** (Wideband Lab Scope, Full Audio, Speech, Deep Bass Zoom), **FPGA-accelerated anti-aliasing decimation ($M \in \{1, 10, 20, 50\}$)**, **wideband $10\,\text{Hz} - 1\,\text{MHz}$ signal generation with interactive Nyquist folding/aliasing exploration**, sub-sample trigger phase-locking, **dedicated passive microphone instruments (`AudioDashboard`)**, **Hilbert analytic envelopes**, **STFT waterfall spectrograms**, sub-Hertz quadratic pitch tracking, and direct Jupyter audio playback (`ol.play_audio()`).
+Features **true simultaneous dual-ADC parallel sampling ($0.00\,\mu\text{s}$ inter-channel skew)**, **runtime-selectable operating regimes** (Wideband Lab Scope, Full Audio, Speech, Deep Bass Zoom), **FPGA-accelerated anti-aliasing decimation ($M \in \{1, 10, 20, 50\}$)**, **wideband $10\,\text{Hz} - 1\,\text{MHz}$ signal generation with interactive Nyquist folding/aliasing exploration**, sub-sample trigger phase-locking, **dedicated passive microphone instruments (`AudioDashboard`)**, **Hilbert analytic envelopes**, **STFT waterfall spectrograms**, **real-time frequency-domain spectral filtering (`HardwareFilter`) with Hermitian symmetry ($k_{\text{eff}} = \min(k, N-k)$)**, **calibrated 1:1 hardware IFFT reconstruction ($V_{\text{pp, filt}} \approx V_{\text{pp, raw}}$ with $< 1\%$ error)**, and direct in-Jupyter audio playback (`ol.play_audio()`).
 
 ---
 
 ## 🏛 System Architecture
 
-This repository adopts the **canonical PYNQ Custom Overlay pattern** (`OscilloscopeOverlay`). It automatically pulls its compiled hardware bitstream and metadata from GitHub Releases (or loads local custom `.bit` builds) and encapsulates the Dual DMA receivers, AXI-Lite trigger registers, sequencer controls, dynamic decimators, and dual-wavegen into a unified Python object.
+This repository adopts the **canonical PYNQ Custom Overlay pattern** (`OscilloscopeOverlay`). It automatically pulls its compiled hardware bitstream and metadata from GitHub Releases (or loads local custom `.bit` builds) and encapsulates the 3-DMA stream receivers, AXI-Lite trigger registers, sequencer controls, dynamic decimators, spectral masking registers, and dual-wavegen into a unified Python object.
 
 ```
  [ Analog Discovery 3 ] ──(W1: Yellow)──────> [ PYNQ-Z2 Pin A0 (Vaux1) ]
@@ -32,31 +32,30 @@ This repository adopts the **canonical PYNQ Custom Overlay pattern** (`Oscillosc
                                                               ▼
                                                      [ tlast_generator (Programmable N) ]
                                                               │ (w/ TLAST)
-                                                     [ axis_broadcaster ]
+                                                    [ axis_broadcaster_0 ]
                                                ┌──────────────┴──────────────┐
                                                ▼ (Decimated Time Stream)     ▼ (Interleaved Stream w/ TLAST)
                                       [ AXI DMA 0 (Time) ]          [ axis_channel_demux ]
                                                │                             │ (Clean A0 vs A1 Routing)
                                                │                             ▼
-                                               │                    [ xfft Core (Runtime N FFT) ]
+                                               │                    [ xfft_0 Core (Forward FFT) ]
                                                │                             │ (Complex Re + j*Im)
                                                │                             ▼
-                                               │                    [ CORDIC (Magnitude Engine) ]
+                                               │                    [ axis_spectral_mask ]
+                                               │                    (Hermitian Masking: k_eff = min(k, N-k))
                                                │                             │
-                                               │                    [ AXI DMA 1 (FFT) ]
-                                               │                             │
-                                               └──────────────┬──────────────┘
-                                                              ▼
-                                                   [ OscilloscopeOverlay ]
-                                            ├── .trigger          (HardwareTrigger AXI-Lite)
-                                            ├── .xadc             (StreamingXADC DMA Driver)
-                                            ├── .fft              (StreamingFFT PL DMA Driver)
-                                            ├── .wavegen          (AD3SignalGenerator Dual-DAC)
-                                            ├── .set_profile()    (Multi-Regime Runtime Switcher)
-                                            ├── .play_audio()     (Jupyter Audio Playback)
-                                            ├── .ad3_dashboard()  (Academic Lab Scope UI: 10 Hz - 1 MHz)
-                                            ├── .audio_dashboard()(Dedicated Passive Microphone UI)
-                                            └── .analytic_dashboard() (Acoustic Diagnostics & Spectrograms)
+                                               │                    [ axis_broadcaster_1 ]
+                                               │                       ┌─────┴─────┐
+                                               │                       ▼           ▼
+                                               │                  [ cordic_0 ] [ xfft_1 (IFFT) ]
+                                               │                  (Mag Engine) (Filtered Time)
+                                               │                       │           │
+                                               ▼                       ▼           ▼
+                                      [ AXI DMA 0 (Time) ]    [ AXI DMA 1 ]  [ AXI DMA 2 ]
+                                               │                       │           │
+                                               └───────────────────────┼───────────┘
+                                                                       ▼ (AXI SmartConnect HP0)
+                                                            [ Processing System DDR ]
 ```
 
 ---
@@ -68,40 +67,52 @@ The system seamlessly reconfigures sampling rate, packet duration, and FFT resol
 | Profile Name | Decimator ($M$) | Transform ($N$) | Sampling Rate ($f_s$) | Nyquist Bandwidth | Time Window ($T_{\text{win}}$) | Resolution ($\Delta f$) | Best Used For |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | **`oscilloscope`** | **$1$** (Bypass) | $2048$ | $500\,\text{kSPS}$ | $0 - 250\,\text{kHz}$ | $2.05\,\text{ms}$ | $244.14\,\text{Hz}$ | Function generators, high-speed pulses, logic edges |
-| **`audio`** | **$10$** | $2048$ | $50\,\text{kSPS}$ | $0 - 25\,\text{kHz}$ | $40.96\,\text{ms}$ | $24.41\,\text{Hz}$ | Full-spectrum music, instruments, acoustic speech |
-| **`speech`** | **$20$** | $2048$ | $25\,\text{kSPS}$ | $0 - 12.5\,\text{kHz}$ | $81.92\,\text{ms}$ | $12.21\,\text{Hz}$ | Vocal formants, acoustic resonance |
-| **`bass_zoom`** | **$50$** | $2048$ | $10\,\text{kSPS}$ | $0 - 5\,\text{kHz}$ | $204.80\,\text{ms}$ | **$4.88\,\text{Hz}$** | Deep sub-bass ($20-100\,\text{Hz}$), room acoustic analysis |
+| **`audio`** | **$10$** | $1024$ | $50\,\text{kSPS}$ | $0 - 25\,\text{kHz}$ | $20.48\,\text{ms}$ | $48.83\,\text{Hz}$ | Full-spectrum music, instruments, acoustic speech |
+| **`speech`** | **$20$** | $1024$ | $25\,\text{kSPS}$ | $0 - 12.5\,\text{kHz}$ | $40.96\,\text{ms}$ | $24.41\,\text{Hz}$ | Vocal formants, acoustic resonance |
+| **`bass_zoom`** | **$50$** | $1024$ | $10\,\text{kSPS}$ | $0 - 5\,\text{kHz}$ | $102.40\,\text{ms}$ | **$9.77\,\text{Hz}$** | Deep sub-bass ($20-100\,\text{Hz}$), room acoustic analysis |
 
 ---
 
-## 🖥 3-Tier Interactive Instrument Suite
+## 🖥 4-Tier Interactive Instrument Suite
 
-### 1. Academic Laboratory Dual Scope & Aliasing Explorer (`ol.ad3_dashboard()`)
+### 1. Real-Time Hardware Filter & IFFT Dashboard (`ol.filter_dashboard()`)
+Live 4-trace multi-domain instrument providing real-time hardware frequency filtering and IFFT reconstruction directly on the FPGA fabric:
+* **Interactive Frequency Cutoff Sliders:** Real-time Lowpass, Highpass, Bandpass, and Notch cutoff tuning.
+* **Quick Presets:** Instant configuration for Sub-Bass ($20-120\,\text{Hz}$), Full Bass ($20-250\,\text{Hz}$), Vocals ($300-3.4\,\text{kHz}$), Highpass ($>1\,\text{kHz}$), and $60\,\text{Hz}$ Mains Hum Notch.
+* **Hermitian Symmetry ($k_{\text{eff}} = \min(k, N-k)$):** Eliminates complex leakage and ensures $< 1\%$ amplitude reconstruction error ($0.08\%$).
+
+| Quad Filter View (Raw, IFFT & Masked Spectrum) | Time Domain Superimposed Overlay |
+| :---: | :---: |
+| ![Quad Filter View](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.6.0/12_filter_quad_view.png) | ![Time Overlay](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.6.0/13_filter_time_overlay.png) |
+
+---
+
+### 2. Academic Laboratory Dual Scope & Aliasing Explorer (`ol.ad3_dashboard()`)
 Full-featured oscilloscope with live Analog Discovery 3 signal generation ($10\,\text{Hz} - 1\,\text{MHz}$) and $250\,\text{kHz}$ Nyquist span. Allows students to dial beyond $250\,\text{kHz}$ ($300\,\text{kHz}, 450\,\text{kHz}, 800\,\text{kHz}$) to observe real-time spectral folding/aliasing.
 
 | Dual Time-Domain Scope (A0 & A1) | Dual FFT Spectrum Analyzer (0 to 250 kHz) |
 | :---: | :---: |
-| ![Dual Scope](docs/images/v1.5.0/01_ad3_dual_scope.png) | ![Dual FFT](docs/images/v1.5.0/02_ad3_dual_fft.png) |
+| ![Dual Scope](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/01_ad3_dual_scope.png) | ![Dual FFT](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/02_ad3_dual_fft.png) |
 
 | Dedicated Channel 1 View (A0) | Dedicated Channel 2 View (A1) |
 | :---: | :---: |
-| ![CH1 View](docs/images/v1.5.0/03_ad3_ch1_view.png) | ![CH2 View](docs/images/v1.5.0/04_ad3_ch2_view.png) |
+| ![CH1 View](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/03_ad3_ch1_view.png) | ![CH2 View](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/04_ad3_ch2_view.png) |
 
 ---
 
-### 2. Dedicated Microphone & Audio Instrument (`ol.audio_dashboard()`)
+### 3. Dedicated Microphone & Audio Instrument (`ol.audio_dashboard()`)
 Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), running completely independently without requiring an Analog Discovery 3:
-* **$40.96\,\text{ms} - 204.8\,\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\,\text{Hz} - 250\,\text{Hz}$).
+* **$20.48\,\text{ms} - 102.4\,\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\,\text{Hz} - 250\,\text{Hz}$).
 * **Live VU Meters & Clipping Alerts:** Status bar indicators that flash red if either microphone saturates ($V < 0.10\,\text{V}$ or $V > 3.10\,\text{V}$).
 * **Sub-Bin Quadratic Peak Pitch Tracking:** Extracts the dominant acoustic fundamental ($f_0$) with $\pm 0.5\,\text{Hz}$ accuracy.
 
 | Dual Audio Waveforms (Mic 1 & Mic 2) | Dual Audio Spectrum (0 to 25 kHz) |
 | :---: | :---: |
-| ![Audio Scope](docs/images/v1.5.0/05_audio_dual_scope.png) | ![Audio FFT](docs/images/v1.5.0/06_audio_dual_fft.png) |
+| ![Audio Scope](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/05_audio_dual_scope.png) | ![Audio FFT](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/06_audio_dual_fft.png) |
 
 ---
 
-### 3. Multi-Domain Acoustic Analytics & Spectrogram Engine (`ol.analytic_dashboard()`)
+### 4. Multi-Domain Acoustic Analytics & Spectrogram Engine (`ol.analytic_dashboard()`)
 Advanced diagnostic instrument providing instantaneous mathematical decomposition of stereo sound fields:
 * **3-Strip Stacked Amplitude:** Instantaneous physical Hilbert analytic envelopes ($A(t) = \sqrt{x^2 + \hat{x}^2}$) and Inter-aural Level Differences ($\Delta L(t)$ in dB).
 * **Rolling STFT Waterfall Spectrogram:** 2D time-frequency heatmaps with Blackman-Harris windowing.
@@ -109,7 +120,7 @@ Advanced diagnostic instrument providing instantaneous mathematical decompositio
 
 | 3-Strip Stacked Amplitude & ILD Balance | STFT Waterfall Spectrogram & Phase Tracking |
 | :---: | :---: |
-| ![Analytic Amplitude](docs/images/v1.5.0/09_analytic_amplitude_ild.png) | ![Spectrogram and Pitch](docs/images/v1.5.0/10_analytic_spectrogram_pitch.png) |
+| ![Analytic Amplitude](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/09_analytic_amplitude_ild.png) | ![Spectrogram and Pitch](https://raw.githubusercontent.com/SiririComun/sw-pynq-oscilloscope/main/docs/images/v1.5.0/10_analytic_spectrogram_pitch.png) |
 
 ---
 
@@ -156,36 +167,40 @@ install_ad3_drivers()
 
 ## 💻 Python API Usage
 
-### 1. Multi-Regime Profile Switching & Capture
+### 1. Real-Time Hardware Filtering & Capture
 ```python
 from pynq_oscilloscope import check_usb_permissions, OscilloscopeOverlay
 
 check_usb_permissions()
 
-# Load hardware overlay (auto-fetches v1.5.0 bitstream)
+# Load hardware overlay (auto-fetches v1.6.0 bitstream)
 ol = OscilloscopeOverlay()
-
-# 1. Switch to Full Audio Mode (50 kSPS, 40.96 ms frame)
 ol.set_profile("audio")
-v_a0, v_a1 = ol.capture_stereo()
-print(f"Captured Audio: A0 Vpp={v_a0.max()-v_a0.min():.2f}V | A1 Vpp={v_a1.max()-v_a1.min():.2f}V")
 
-# 2. Switch to Deep Bass Zoom Mode (10 kSPS, Δf = 4.88 Hz, 204.8 ms frame)
-ol.set_profile("bass_zoom")
+# Engage hardware Lowpass filter at 250 Hz
+ol.filter.set_lowpass(cutoff_hz=250.0)
 
-# 3. Switch back to High-Speed Lab Scope (500 kSPS, 0 - 250 kHz)
-ol.set_profile("oscilloscope")
+# Capture Raw Time (DMA 0), Filtered Time (DMA 2), and FFT Spectrum (DMA 1) in <2 ms
+v_a0, v_a1, v_filt, freqs, mags = ol.capture_all()
 ```
 
-### 2. Jupyter Audio Playback
+### 2. Jupyter Audio Playback & Multi-Second Recording
 ```python
-# Record and listen to microphone audio directly in Jupyter Notebook
+# Record and listen to raw vs. FPGA-filtered audio directly in Jupyter Notebook
 ol.set_profile("audio")
-ol.play_audio(channel=1) # Plays Channel 1 (A0)
+
+# 1. Listen to raw input
+ol.play_audio(duration_sec=3.0, filtered=False)
+
+# 2. Listen to real-time FPGA-filtered bass
+ol.play_audio(duration_sec=3.0, filtered=True)
 ```
 
 ### 3. Launch Interactive Dashboards
 ```python
+# Launch 4-Trace Hardware Filter Dashboard:
+app = ol.filter_dashboard()
+
 # Launch Academic Lab Scope & AD3 Aliasing Explorer:
 app = ol.ad3_dashboard()
 
@@ -198,7 +213,7 @@ app = ol.analytic_dashboard()
 
 ---
 
-## 📓 5-Notebook Progressive Suite
+## 📓 7-Notebook Progressive Curriculum
 
 | Notebook | Focus Area | Key Modules Used |
 | :--- | :--- | :--- |
@@ -207,6 +222,8 @@ app = ol.analytic_dashboard()
 | **`03_ad3_oscilloscope_dashboard.ipynb`** | **Academic Lab Scope:** Dual-trace scope, $10\,\text{Hz} - 1\,\text{MHz}$ wavegen, and live aliasing folding exploration. | `OscilloscopeOverlay`, `OscilloscopeDashboard` |
 | **`04_audio_dashboard.ipynb`** | **Audio Instrument:** Dedicated passive microphone analyzer with VU meters & overtone pitch tracking. | `OscilloscopeOverlay`, `AudioDashboard` |
 | **`05_acoustic_analytic_curves.ipynb`** | **Analytics Engine:** Zero-skew splitter test, Hilbert envelopes, ILD balance, and STFT waterfall spectrograms. | `OscilloscopeOverlay`, `AcousticAnalyticDashboard` |
+| **`06_audio_recording_and_playback.ipynb`** | **Audio Recording:** Multi-second microphone recording, frame-boundary continuity, and WAV audio playback. | `OscilloscopeOverlay`, `audio_utils` |
+| **`07_pl_hardware_filter_test.ipynb`** | **FPGA Filter & IFFT:** Real-time frequency masking, 1:1 amplitude fidelity verification, stopband rejection, and `AudioFilterDashboard`. | `OscilloscopeOverlay`, `HardwareFilter`, `AudioFilterDashboard` |
 
 ---
 

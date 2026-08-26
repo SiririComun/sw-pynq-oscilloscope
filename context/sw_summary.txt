@@ -9,12 +9,13 @@ Branch Tracking Status:
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/pl-freq-filter-ifft       a1580ff fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state
+* feat/pl-freq-filter-ifft       65f823d docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
   main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* a1580ff  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state (SiririComun)
+* 65f823d  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming (SiririComun)
+* a1580ff  - 2026-08-26 : fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state (SiririComun)
 * 3c92cc1  (origin/feat/pl-freq-filter-ifft) - 2026-08-26 : fix(overlay): implement 2-frame steady-state advance and wavegen readiness check in capture_all (SiririComun)
 * 59939b7  - 2026-08-26 : docs(notebooks): finalize 07_pl_hardware_filter_test with end-to-end verification suite (SiririComun)
 * cc800dc  - 2026-08-26 : feat(filter_dashboard): overhaul 4-row layout, 720px height, and full 20.48ms window (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 * 9cc7e7d  - 2026-08-25 : feat(dashboard): add AudioFilterDashboard with live cutoff sliders and 4-trace display (SiririComun)
 * b98df77  - 2026-08-25 : feat(notebooks): add 07_pl_hardware_filter_test verification notebook (SiririComun)
 * ca8c379  - 2026-08-25 : feat(overlay): bind axi_dma_2 and add capture_all and capture_filtered_time APIs (SiririComun)
-* 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)
-* a845b0c  - 2026-08-25 : chore(hardware): pin hardware overlay to v1.6.0-rc1 with PL IFFT filter (SiririComun)```
+* 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)```
 
 Files structure: 
 
@@ -50,18 +50,21 @@ Files structure:
 │       │   ├── dashboard_dual_sine.png
 │       │   ├── dashboard_dual_square.png
 │       │   └── dashboard_screenshot.png
-│       └── v1.5.0
-│           ├── 01_ad3_dual_scope.png
-│           ├── 02_ad3_dual_fft.png
-│           ├── 03_ad3_ch1_view.png
-│           ├── 04_ad3_ch2_view.png
-│           ├── 05_audio_dual_scope.png
-│           ├── 06_audio_dual_fft.png
-│           ├── 07_audio_mic1_view.png
-│           ├── 08_audio_mic2_view.png
-│           ├── 09_analytic_amplitude_ild.png
-│           ├── 10_analytic_spectrogram_pitch.png
-│           └── 11_analytic_phase_timing.png
+│       ├── v1.5.0
+│       │   ├── 01_ad3_dual_scope.png
+│       │   ├── 02_ad3_dual_fft.png
+│       │   ├── 03_ad3_ch1_view.png
+│       │   ├── 04_ad3_ch2_view.png
+│       │   ├── 05_audio_dual_scope.png
+│       │   ├── 06_audio_dual_fft.png
+│       │   ├── 07_audio_mic1_view.png
+│       │   ├── 08_audio_mic2_view.png
+│       │   ├── 09_analytic_amplitude_ild.png
+│       │   ├── 10_analytic_spectrogram_pitch.png
+│       │   └── 11_analytic_phase_timing.png
+│       └── v1.6.0
+│           ├── 12_filter_quad_view.png
+│           └── 13_filter_time_overlay.png
 ├── .github
 │   └── workflows
 │       └── pypi.yml
@@ -97,7 +100,7 @@ Files structure:
 ├── requirements.txt
 └── setup.py
 
-10 directories, 53 files
+11 directories, 55 files
 ```
 
 pypi.yml:
