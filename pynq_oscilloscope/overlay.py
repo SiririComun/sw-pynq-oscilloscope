@@ -35,34 +35,34 @@ class OscilloscopeOverlay(Overlay):
         "oscilloscope": {
             "decim_factor": 1,
             "decim_bits": 0,
-            "fft_points": 2048,
+            "fft_points": 1024,
             "packet_size": 2048,
             "sample_rate_hz": 500_000.0,
-            "desc": "Wideband Lab Scope (500 kSPS, 0 - 250 kHz, df = 244.14 Hz)",
+            "desc": "Wideband Lab Scope (500 kSPS, 0 - 250 kHz, df = 488.28 Hz)",
         },
         "audio": {
             "decim_factor": 10,
             "decim_bits": 1,
-            "fft_points": 2048,
+            "fft_points": 1024,
             "packet_size": 2048,
             "sample_rate_hz": 50_000.0,
-            "desc": "Full-Band Audio (50 kSPS, 0 - 25 kHz, df = 24.41 Hz)",
+            "desc": "Full-Band Audio (50 kSPS, 0 - 25 kHz, df = 48.83 Hz)",
         },
         "speech": {
             "decim_factor": 20,
             "decim_bits": 2,
-            "fft_points": 2048,
+            "fft_points": 1024,
             "packet_size": 2048,
             "sample_rate_hz": 25_000.0,
-            "desc": "Speech / Vocal Formants (25 kSPS, 0 - 12.5 kHz, df = 12.21 Hz)",
+            "desc": "Speech / Vocal Formants (25 kSPS, 0 - 12.5 kHz, df = 24.41 Hz)",
         },
         "bass_zoom": {
             "decim_factor": 50,
             "decim_bits": 3,
-            "fft_points": 2048,
+            "fft_points": 1024,
             "packet_size": 2048,
             "sample_rate_hz": 10_000.0,
-            "desc": "Deep Bass Zoom (10 kSPS, 0 - 5 kHz, df = 4.88 Hz)",
+            "desc": "Deep Bass Zoom (10 kSPS, 0 - 5 kHz, df = 9.77 Hz)",
         },
     }
 
@@ -136,6 +136,15 @@ class OscilloscopeOverlay(Overlay):
         self.trigger.set_fft_length(self.fft_points)
         self.trigger.set_packet_size(self.packet_size)
 
+        # Reallocate filtered buffer if transform length changes
+        if hasattr(self, "_buffer_filtered") and self._buffer_filtered is not None:
+            if len(self._buffer_filtered) != self.fft_points:
+                try:
+                    self._buffer_filtered.close()
+                except Exception:
+                    pass
+                self._buffer_filtered = allocate(shape=(self.fft_points,), dtype="u2")
+
         # Update software drivers
         self.fft.update_configuration(fft_points=self.fft_points, sample_rate_hz=self.sample_rate_hz)
         self.filter.update_configuration(sample_rate_hz=self.sample_rate_hz, fft_points=self.fft_points)
@@ -166,7 +175,7 @@ class OscilloscopeOverlay(Overlay):
         return self.sample_rate_hz
 
     # -------------------------------------------------------------------------
-    # Capture APIs (Raw Time, Stereo, FFT & Filtered Time)
+    # Single-Frame Capture API
     # -------------------------------------------------------------------------
 
     def capture_raw(self) -> np.ndarray:
@@ -197,6 +206,7 @@ class OscilloscopeOverlay(Overlay):
             raise RuntimeError("Filtered Time DMA (axi_dma_2) not found in hardware overlay.")
 
         self.dma_filtered.recvchannel.transfer(self._buffer_filtered)
+        self.trigger.mmio.write(0x00, 0x0B)
         self.dma_filtered.recvchannel.wait()
 
         raw_samples = np.array(self._buffer_filtered, copy=True)
@@ -236,8 +246,8 @@ class OscilloscopeOverlay(Overlay):
         self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
         self.fft.dma.recvchannel.transfer(self.fft._buffer)
 
-        # 2. Arm Trigger in Auto Mode
-        self.trigger.arm()
+        # 2. Arm Trigger with Arm-on-Demand (0x0B)
+        self.trigger.mmio.write(0x00, 0x0B)
 
         # 3. Wait for hardware completion
         self.xadc.dma.recvchannel.wait()
@@ -296,8 +306,8 @@ class OscilloscopeOverlay(Overlay):
         self.fft.dma.recvchannel.transfer(self.fft._buffer)
         self.dma_filtered.recvchannel.transfer(self._buffer_filtered)
 
-        # 2. Arm Hardware Trigger
-        self.trigger.arm()
+        # 2. Arm Hardware Trigger with Arm-on-Demand (0x0B)
+        self.trigger.mmio.write(0x00, 0x0B)
 
         # 3. Wait for all transfers to complete
         self.xadc.dma.recvchannel.wait()
@@ -372,7 +382,7 @@ class OscilloscopeOverlay(Overlay):
             try:
                 for frame_idx in range(num_frames):
                     self.dma_filtered.recvchannel.transfer(buf)
-                    self.trigger.arm()
+                    self.trigger.mmio.write(0x00, 0x0B)
                     self.dma_filtered.recvchannel.wait()
                     offset = frame_idx * self.fft_points
                     out_raw[offset : offset + self.fft_points] = np.array(buf, copy=False)
@@ -462,7 +472,7 @@ class OscilloscopeOverlay(Overlay):
         return dash
 
     def filter_dashboard(self, display_window: int = 1024):
-        """Launches the Real-Time 4-Trace Hardware Filter Dashboard."""
+        """Launches the Real-Time 4-Trace Hardware Filter & IFFT Dashboard."""
         from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
         dash = AudioFilterDashboard(overlay=self, display_window=display_window)
         dash.display()
