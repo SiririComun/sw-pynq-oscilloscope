@@ -273,64 +273,67 @@ class OscilloscopeOverlay(Overlay):
         self,
         unit: str = "dBV",
         window: str = "hann",
-        crop_startup_samples: int = 0,
-        timeout: float = 1.0
+        crop_startup_samples: int = 8,
+        timeout: float = 0.5
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Synchronously captures all 3 hardware DMA streams in parallel:
+        Synchronously captures all 3 hardware DMA streams in parallel with high-fidelity amplitude scaling:
         Returns: (voltages_a0, voltages_a1, voltages_filtered, freqs_hz, mags)
         """
         if self.dma_filtered is None:
             v_a0, v_a1, freqs, mags = self.capture_both(unit=unit, window=window, crop_startup_samples=crop_startup_samples, timeout=timeout)
             return v_a0, v_a1, v_a0, freqs, mags
 
-        # Ensure all channels are idle before queuing
-        t_wait = time.time()
-        while not self.xadc.dma.recvchannel.idle or not self.fft.dma.recvchannel.idle or not self.dma_filtered.recvchannel.idle:
-            time.sleep(0.001)
-            if time.time() - t_wait > timeout:
-                try:
-                    self.xadc.dma.mmio.write(0x30, 0x04)
-                    self.fft.dma.mmio.write(0x30, 0x04)
-                    self.dma_filtered.mmio.write(0x30, 0x04)
-                    time.sleep(0.01)
-                    self.xadc.dma.recvchannel.start()
-                    self.fft.dma.recvchannel.start()
-                    self.dma_filtered.recvchannel.start()
-                except Exception:
-                    pass
-                break
+        # Ensure DMA channels are reset and clean
+        for dma_block in [self.xadc.dma, self.fft.dma, self.dma_filtered]:
+            try:
+                dma_block.mmio.write(0x30, 0x04)
+                time.sleep(0.001)
+                dma_block.recvchannel.start()
+            except Exception:
+                pass
 
         # 1. Queue all 3 DMAs concurrently
         self.xadc.dma.recvchannel.transfer(self.xadc._buffer)
         self.fft.dma.recvchannel.transfer(self.fft._buffer)
         self.dma_filtered.recvchannel.transfer(self._buffer_filtered)
 
-        # 2. Arm Hardware Trigger with Arm-on-Demand (0x0B)
+        # 2. Arm Hardware Trigger with Arm-on-Demand (0x0B: Auto + Single-Shot + Arm)
         self.trigger.mmio.write(0x00, 0x0B)
 
-        # 3. Wait for all transfers to complete
-        self.xadc.dma.recvchannel.wait()
-        self.fft.dma.recvchannel.wait()
-        self.dma_filtered.recvchannel.wait()
+        # 3. Wait for all transfers to complete with timeout protection
+        t_wait = time.time()
+        while not (self.xadc.dma.recvchannel.idle and self.fft.dma.recvchannel.idle and self.dma_filtered.recvchannel.idle):
+            if time.time() - t_wait > timeout:
+                for dma_block in [self.xadc.dma, self.fft.dma, self.dma_filtered]:
+                    try:
+                        dma_block.mmio.write(0x30, 0x04)
+                    except Exception:
+                        pass
+                raise TimeoutError("[OscilloscopeOverlay] 3-DMA Synchronous capture timed out.")
+            time.sleep(0.0005)
 
-        # 4. Process Raw Time Stereo
-        raw_interleaved = np.array(self.xadc._buffer)
+        # 4. Extract Raw Time Stereo (DMA 0)
+        raw_interleaved = np.array(self.xadc._buffer, copy=False)
         raw_ch1 = raw_interleaved[0::2]
         raw_ch2 = raw_interleaved[1::2]
         v_a0 = (raw_ch1 >> 4) * (3.3 / 4095.0)
         v_a1 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        # 5. Process Filtered Time
-        raw_filt = np.array(self._buffer_filtered)
-        v_filt = (raw_filt >> 4) * (3.3 / 4095.0)
+        # 5. Extract Filtered Time (DMA 2) with High-Fidelity Gain Calibration
+        raw_filt = np.array(self._buffer_filtered, copy=False).astype(np.float64)
+        # Convert offset-binary code to AC voltage and apply IFFT gain compensation
+        # 16-bit midpoint is 32768, amplitude scale matches 1.65V full scale
+        ac_filt = (raw_filt - 32768.0) / 32768.0 * 1.65 * 4.25
+        v_filt = np.clip(1.65 + ac_filt, 0.0, 3.3)
 
-        if crop_startup_samples > 0 and len(v_a0) > crop_startup_samples:
-            v_a0 = v_a0[crop_startup_samples:]
-            v_a1 = v_a1[crop_startup_samples:]
-            v_filt = v_filt[crop_startup_samples:]
+        # Crop startup transients
+        if crop_startup_samples > 0:
+            v_a0 = v_a0[crop_startup_samples:-crop_startup_samples]
+            v_a1 = v_a1[crop_startup_samples:-crop_startup_samples]
+            v_filt = v_filt[crop_startup_samples:-crop_startup_samples]
 
-        # 6. Process Spectrum
+        # 6. Extract Spectrum (DMA 1)
         freqs, mags = self.fft.process_buffer(self.fft._buffer, unit=unit, window=window)
 
         return v_a0, v_a1, v_filt, freqs, mags
