@@ -107,6 +107,7 @@ class HardwareFilter:
     # 2. Filter Configuration Methods
     # =========================================================================
 
+
     def set_passband(
         self,
         low_hz: float,
@@ -114,6 +115,7 @@ class HardwareFilter:
         mode: str = "bandpass",
         enable: bool = True
     ):
+
         """
         Configures the hardware frequency filter cutoffs in physical Hertz.
 
@@ -122,28 +124,26 @@ class HardwareFilter:
         :param mode: 'lowpass', 'highpass', 'bandpass', or 'notch'.
         :param enable: If True, engages the filter immediately.
         """
+
         k_start = self.freq_to_bin(low_hz)
         k_stop = self.freq_to_bin(high_hz)
 
-        # Ensure k_start <= k_stop
         if k_start > k_stop:
             k_start, k_stop = k_stop, k_start
 
         mode_clean = mode.lower().strip()
-        if mode_clean not in self.MODE_MAP:
-            raise ValueError(f"Invalid mode '{mode}'. Choose from: {list(self.MODE_MAP.keys())}")
+        mode_bits = self.MODE_MAP.get(mode_clean, self.MODE_LOWPASS)
 
-        mode_bits = self.MODE_MAP[mode_clean]
-
-        # Write cutoffs
-        self.mmio.write(self.REG_BIN_START, k_start)
-        self.mmio.write(self.REG_BIN_STOP, k_stop)
+        # Write cutoffs and FFT length
+        self.mmio.write(self.REG_BIN_START, k_start) # 0x04
+        self.mmio.write(self.REG_BIN_STOP, k_stop)   # 0x08
+        self.mmio.write(0x0C, self.fft_points)       # 0x0C: REG_FFT_LEN
 
         # Write control register
         ctrl = mode_bits
         if enable:
             ctrl |= self.BIT_FILTER_EN
-        self.mmio.write(self.REG_CTRL, ctrl)
+        self.mmio.write(self.REG_CTRL, ctrl)         # 0x00
 
     def set_lowpass(self, cutoff_hz: float = 250.0):
         """Configures Lowpass / Bass filter mode (passes 0 Hz up to cutoff_hz)."""
