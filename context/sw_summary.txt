@@ -9,12 +9,13 @@ Branch Tracking Status:
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/pl-freq-filter-ifft       65f823d docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming
+* feat/pl-freq-filter-ifft       59ec1a6 docs(readme): update documentation for v1.6.0 with PyPI-compliant assets and filter dashboard
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
   main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* 65f823d  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming (SiririComun)
+* 59ec1a6  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : docs(readme): update documentation for v1.6.0 with PyPI-compliant assets and filter dashboard (SiririComun)
+* 65f823d  - 2026-08-26 : docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming (SiririComun)
 * a1580ff  - 2026-08-26 : fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state (SiririComun)
 * 3c92cc1  (origin/feat/pl-freq-filter-ifft) - 2026-08-26 : fix(overlay): implement 2-frame steady-state advance and wavegen readiness check in capture_all (SiririComun)
 * 59939b7  - 2026-08-26 : docs(notebooks): finalize 07_pl_hardware_filter_test with end-to-end verification suite (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 * 0ec5816  - 2026-08-25 : feat(filter_dashboard): complete full 4-tab filter dashboard with live presets and auto-ranging (SiririComun)
 * 9cc7e7d  - 2026-08-25 : feat(dashboard): add AudioFilterDashboard with live cutoff sliders and 4-trace display (SiririComun)
 * b98df77  - 2026-08-25 : feat(notebooks): add 07_pl_hardware_filter_test verification notebook (SiririComun)
-* ca8c379  - 2026-08-25 : feat(overlay): bind axi_dma_2 and add capture_all and capture_filtered_time APIs (SiririComun)
-* 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)```
+* ca8c379  - 2026-08-25 : feat(overlay): bind axi_dma_2 and add capture_all and capture_filtered_time APIs (SiririComun)```
 
 Files structure: 
 
@@ -145,7 +145,7 @@ hardware.json:
 ```json
 {
     "repo": "SiririComun/hw-xadc-dma-overlays",
-    "version": "v1.6.0-rc2"
+    "version": "v1.6.0"
 }```
 
 setup.py:
@@ -161,7 +161,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="pynq-oscilloscope",  # Package name for pip install
-    version="1.6.0-rc2",
+    version="1.6.0",
     author="Juan Pablo Sánchez (SiririComun)",
     description="High-level Python package for a real-time 1 MSPS DMA Oscilloscope on PYNQ boards using Analog Discovery 3",
     long_description=long_description,
@@ -228,7 +228,7 @@ from pynq_oscilloscope.audio_utils import (
 from pynq_oscilloscope.hw_filter import HardwareFilter
 from pynq_oscilloscope.filter_dashboard import AudioFilterDashboard
 
-__version__ = "1.6.0-rc2"
+__version__ = "1.6.0"
 __all__ = [
     "OscilloscopeOverlay",
     "HardwareTrigger",
