@@ -1,7 +1,7 @@
 """
 pynq_oscilloscope.filter_dashboard: Full-Featured Real-Time Hardware Filter & IFFT Dashboard.
 Features 4-tab multi-domain visualization, live frequency cutoff sliders, interactive presets
-(Sub-Bass, Full Bass, Vocals, Notch, Highpass), sub-sample phase-locking, and 70+ FPS DMA streaming.
+(Sub-Bass, Full Bass, Vocals, Notch, Highpass), shaded passband overlays, and 70+ FPS DMA streaming.
 """
 
 import time
@@ -22,7 +22,7 @@ from pynq_oscilloscope.hw_filter import HardwareFilter
 
 class AudioFilterDashboard:
     """
-    Complete 4-Tab Real-Time Hardware Filter & IFFT Reconstruction Instrument.
+    Interactive Real-Time Hardware Filter & IFFT Reconstruction Instrument.
     Features 50 kSPS dual-channel acquisition, real-time spectral mask reconfiguration,
     sub-sample trigger phase-locking, and concurrent 3-DMA streaming (Raw, FFT, Filtered).
     """
@@ -81,7 +81,7 @@ class AudioFilterDashboard:
         self._setup_callbacks()
 
     def _build_ui(self):
-        # 1. Action Row & Status Readouts
+        # 1. Row 1: Action Transport & Real-Time Readout HUD
         self.start_btn = widgets.Button(description="Start Live", button_style="success", icon="play", layout=widgets.Layout(width="115px"))
         self.stop_btn = widgets.Button(description="Stop", button_style="danger", icon="stop", layout=widgets.Layout(width="95px"))
         self.force_btn = widgets.Button(description="Force Trig", button_style="warning", icon="bolt", layout=widgets.Layout(width="115px"))
@@ -90,7 +90,8 @@ class AudioFilterDashboard:
 
         self.readout_stats = widgets.HTML("<span style='color:#00FFCC; font-family:monospace; font-size:13px; font-weight:bold;'>Raw Vpp: 0.00V | Filt Vpp: 0.00V | Atten: 0.0 dB | Mode: Lowpass (Bass)</span>")
 
-        # 2. Hardware Filter Presets Row
+        # 2. Row 2: ⚡ Quick Filter Presets
+        self.preset_label = widgets.HTML("<span style='color:#FFA500; font-family:sans-serif; font-size:12px; font-weight:bold;'>⚡ Quick Presets:</span>", layout=widgets.Layout(margin="4px 6px 0 0"))
         self.btn_preset_bass = widgets.Button(description="Sub-Bass (20-120 Hz)", button_style="primary", layout=widgets.Layout(width="160px"))
         self.btn_preset_fullbass = widgets.Button(description="Full Bass (20-250 Hz)", button_style="primary", layout=widgets.Layout(width="160px"))
         self.btn_preset_vocals = widgets.Button(description="Vocals (300-3.4k Hz)", button_style="primary", layout=widgets.Layout(width="165px"))
@@ -98,12 +99,13 @@ class AudioFilterDashboard:
         self.btn_preset_notch = widgets.Button(description="60 Hz Notch", button_style="warning", layout=widgets.Layout(width="120px"))
         self.btn_preset_bypass = widgets.Button(description="Bypass Filter", button_style="", layout=widgets.Layout(width="120px"))
 
-        # 3. Dynamic Cutoff Controls Row
+        # 3. Row 3: 🎛 Custom Range & Filter Tuning
+        self.tune_label = widgets.HTML("<span style='color:#00FFCC; font-family:sans-serif; font-size:12px; font-weight:bold;'>🎛 Custom Range:</span>", layout=widgets.Layout(margin="4px 6px 0 0"))
         self.filter_mode_dd = widgets.Dropdown(
             options=[("Lowpass (Bass)", "lowpass"), ("Highpass (Treble)", "highpass"), ("Bandpass", "bandpass"), ("Notch", "notch")],
             value="lowpass",
-            description="Filter Mode:",
-            layout=widgets.Layout(width="210px")
+            description="Mode:",
+            layout=widgets.Layout(width="190px")
         )
         self.low_cut_slider = widgets.FloatSlider(value=20.0, min=0.0, max=25000.0, step=10.0, description="Low-Cut (Hz):", continuous_update=False, layout=widgets.Layout(width="260px"))
         self.low_cut_input = widgets.BoundedFloatText(value=20.0, min=0.0, max=25000.0, step=10.0, layout=widgets.Layout(width="85px"))
@@ -113,7 +115,7 @@ class AudioFilterDashboard:
         self.high_cut_input = widgets.BoundedFloatText(value=250.0, min=20.0, max=25000.0, step=10.0, layout=widgets.Layout(width="85px"))
         widgets.jslink((self.high_cut_slider, "value"), (self.high_cut_input, "value"))
 
-        # 4. Trigger & Display Options Row
+        # 4. Row 4: ⏱ Trigger & Timebase Options
         self.trig_mode_dd = widgets.Dropdown(options=["Auto", "Normal", "Single"], value="Auto", description="Trig Mode:", layout=widgets.Layout(width="180px"))
         self.trig_edge_dd = widgets.Dropdown(options=["Rising", "Falling"], value="Rising", description="Trig Edge:", layout=widgets.Layout(width="180px"))
         self.trig_src_dd = widgets.Dropdown(options=["CH1 (A0)", "CH2 (A1)"], value="CH1 (A0)", description="Trig Src:", layout=widgets.Layout(width="180px"))
@@ -132,13 +134,15 @@ class AudioFilterDashboard:
         t_ms = np.linspace(0, self.total_duration_ms, self.num_pts_per_ch - 16)
         initial_freq = np.linspace(0, self.fs_per_ch / 2.0, len(t_ms) // 2 + 1)
 
-        # Tab 0: Quad Filter View
+        # =====================================================================
+        # Tab 0: Quad Filter View (Expanded 720px Height & Clean Margins)
+        # =====================================================================
         self.fig_quad = make_subplots(
-            rows=3, cols=1, vertical_spacing=0.10,
+            rows=3, cols=1, vertical_spacing=0.12,
             subplot_titles=(
                 "<b>Row 1: Raw Input Time Waveform (Channel 1 / A0)</b>",
                 "<b>Row 2: FPGA-Filtered Time Waveform (Reconstructed via IFFT)</b>",
-                "<b>Row 3: Frequency Spectrum & Applied Hardware Filter Mask</b>"
+                "<b>Row 3: Frequency Spectrum & Applied Hardware Filter Mask Window</b>"
             )
         )
         self.fig_quad = go.FigureWidget(self.fig_quad)
@@ -146,44 +150,58 @@ class AudioFilterDashboard:
         self.fig_quad.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger Threshold", row=1, col=1)
         self.fig_quad.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=2.0), name="Filtered IFFT", row=2, col=1)
         self.fig_quad.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#E040FB", width=1.8), name="Spectrum (FFT)", row=3, col=1)
-        self.fig_quad.update_layout(template="plotly_dark", height=620, margin=dict(l=40, r=20, t=40, b=35), showlegend=False, uirevision="t0")
+
+        self.fig_quad.update_layout(
+            template="plotly_dark",
+            height=720,
+            margin=dict(l=45, r=25, t=40, b=55),
+            showlegend=False,
+            uirevision="t0"
+        )
         self.fig_quad.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_quad.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=2, col=1)
         self.fig_quad.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=3, col=1)
+        self.fig_quad.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=1, col=1)
         self.fig_quad.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=2, col=1)
         self.fig_quad.update_xaxes(range=[0, 2500], title="Frequency (Hz)", row=3, col=1)
 
+        # =====================================================================
         # Tab 1: Time Domain Superimposed Overlay
+        # =====================================================================
         self.fig_overlay = go.FigureWidget()
         self.fig_overlay.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="rgba(0, 255, 204, 0.45)", width=1.4), name="Raw Input (A0)")
         self.fig_overlay.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=2.2), name="FPGA Filtered (IFFT)")
         self.fig_overlay.update_layout(
             title="<b>Time Domain Overlay: Raw Input vs. FPGA Reconstructed Output</b>",
-            template="plotly_dark", height=480, margin=dict(l=40, r=20, t=45, b=35), uirevision="t1"
+            template="plotly_dark", height=480, margin=dict(l=45, r=25, t=45, b=45), uirevision="t1"
         )
         self.fig_overlay.update_yaxes(range=[0, 3.3], title="Voltage (V)")
         self.fig_overlay.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)")
 
+        # =====================================================================
         # Tab 2: Dedicated Channel 1 / Raw View
+        # =====================================================================
         self.fig_raw_view = make_subplots(rows=2, cols=1, vertical_spacing=0.14,
             subplot_titles=("<b>Channel 1: A0 Raw Time Waveform</b>", "<b>Channel 1: A0 Raw FFT Spectrum</b>"))
         self.fig_raw_view = go.FigureWidget(self.fig_raw_view)
         self.fig_raw_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#00FFCC", width=1.6), name="Raw Time", row=1, col=1)
         self.fig_raw_view.add_scatter(x=[0, self.total_duration_ms], y=[1.65, 1.65], mode="lines", line=dict(color="#FFA500", width=1.2, dash="dash"), name="Trigger", row=1, col=1)
         self.fig_raw_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#00FFCC", width=1.8), name="Raw FFT", row=2, col=1)
-        self.fig_raw_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), showlegend=False, uirevision="t2")
+        self.fig_raw_view.update_layout(template="plotly_dark", height=520, margin=dict(l=45, r=25, t=40, b=45), showlegend=False, uirevision="t2")
         self.fig_raw_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_raw_view.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=2, col=1)
         self.fig_raw_view.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=1, col=1)
         self.fig_raw_view.update_xaxes(range=[0, 2500], title="Frequency (Hz)", row=2, col=1)
 
+        # =====================================================================
         # Tab 3: Dedicated Filtered View
+        # =====================================================================
         self.fig_filt_view = make_subplots(rows=2, cols=1, vertical_spacing=0.14,
             subplot_titles=("<b>FPGA Reconstructed Time Waveform (axi_dma_2)</b>", "<b>Hardware-Filtered FFT Spectrum</b>"))
         self.fig_filt_view = go.FigureWidget(self.fig_filt_view)
         self.fig_filt_view.add_scatter(x=t_ms, y=[1.65]*len(t_ms), mode="lines", line=dict(color="#FF007F", width=2.0), name="Filt Time", row=1, col=1)
         self.fig_filt_view.add_scatter(x=initial_freq, y=[-100]*len(initial_freq), mode="lines", line=dict(color="#FF007F", width=1.8), name="Filt FFT", row=2, col=1)
-        self.fig_filt_view.update_layout(template="plotly_dark", height=500, margin=dict(l=40, r=20, t=45, b=35), showlegend=False, uirevision="t3")
+        self.fig_filt_view.update_layout(template="plotly_dark", height=520, margin=dict(l=45, r=25, t=40, b=45), showlegend=False, uirevision="t3")
         self.fig_filt_view.update_yaxes(range=[0, 3.3], title="Voltage (V)", row=1, col=1)
         self.fig_filt_view.update_yaxes(range=[-100, 5], title="Mag (dBV)", row=2, col=1)
         self.fig_filt_view.update_xaxes(range=[0, self.total_duration_ms], title="Time (ms)", row=1, col=1)
@@ -293,7 +311,7 @@ class AudioFilterDashboard:
         dma_fft = self.overlay.axi_dma_1
         trig = self.trigger
 
-        # Initialize XADC and synchronize hardware FFT to N=1024
+        # Initialize XADC sequencer & synchronize FFT to N=1024
         if hasattr(self.overlay, "xadc_wiz_0"):
             self.overlay.xadc_wiz_0.mmio.write(0x304, 0x2000)
             self.overlay.xadc_wiz_0.mmio.write(0x320, 0x0000)
@@ -306,10 +324,10 @@ class AudioFilterDashboard:
 
         self._update_filter_params()
 
-        # Allocate properly sized DMA buffers
-        buf_time = allocate(shape=(self.packet_size,), dtype="u2")      # 2048 interleaved words
-        buf_filt = allocate(shape=(self.num_pts_per_ch,), dtype="u2")   # 1024 filtered samples
-        buf_fft = allocate(shape=(self.num_pts_per_ch,), dtype="u2")    # 1024 FFT bins
+        # Allocate matched DMA buffers
+        buf_time = allocate(shape=(self.packet_size,), dtype="u2")      # 2048 words (stereo interleaved)
+        buf_filt = allocate(shape=(self.num_pts_per_ch,), dtype="u2")   # 1024 words
+        buf_fft = allocate(shape=(self.num_pts_per_ch,), dtype="u2")    # 1024 words
 
         def reset_dmas():
             for dma_block in [dma_time, dma_filt, dma_fft]:
@@ -349,13 +367,14 @@ class AudioFilterDashboard:
                         break
                     time.sleep(0.0005)
                 else:
-                    # 4. Extract data cleanly
+                    # 4. Extract data cleanly with calibrated 1:1 amplitude
                     raw_interleaved = np.array(buf_time)
                     raw_ch1 = raw_interleaved[0::2]
                     v_raw = ((raw_ch1 >> 4) * (3.3 / 4095.0))[8:-8]
 
                     raw_f = np.array(buf_filt)
-                    v_filt = ((raw_f >> 4) * (3.3 / 4095.0))[8:-8]
+                    ac_filt = (raw_f.astype(np.float64) - 32768.0)[8:-8]
+                    v_filt = np.clip(1.65 + (ac_filt / 32768.0) * 1.65, 0.0, 3.3)
 
                     n = len(v_raw)
                     t_ms = np.linspace(0, (n / self.fs_per_ch) * 1000.0, n)
@@ -369,67 +388,57 @@ class AudioFilterDashboard:
 
                     active_tab = self.tabs.selected_index
                     trig_v = float(self.trig_level_slider.value)
-                    is_falling = (self.trig_edge_dd.value == "Falling")
                     max_span = float(self.fft_span_dd.value)
 
-                    # Sub-sample Phase Locking on raw input channel
-                    edge_offset = self._find_trigger_edge(v_raw, trig_v, is_falling)
-
-                    # Dynamic 5-Period Auto-Range Timebase
-                    p_f0, _ = StreamingFFT.get_peak_frequency(freqs, mags, min_freq_hz=30.0)
-                    if self.autorange_toggle.value and p_f0 > 30.0:
-                        period_ms = 1000.0 / p_f0
-                        show_duration_ms = min(self.total_duration_ms, max(0.01, 5.0 * period_ms))
-                        show_pts = int((show_duration_ms / 1000.0) * self.fs_per_ch)
-                        show_pts = max(16, min(show_pts, len(v_raw) - edge_offset))
+                    # Dynamic Vertical Auto-Range Scaling (Preserves Full 20.48 ms Window!)
+                    if self.autorange_toggle.value and vpp_raw > 0.1:
+                        y_margin = max(0.2, vpp_raw * 0.2)
+                        y_min = max(0.0, 1.65 - (vpp_raw / 2.0 + y_margin))
+                        y_max = min(3.3, 1.65 + (vpp_raw / 2.0 + y_margin))
                     else:
-                        show_pts = len(v_raw) - edge_offset
-                        show_duration_ms = (show_pts / self.fs_per_ch) * 1000.0
-
-                    plot_raw = v_raw[edge_offset : edge_offset + show_pts]
-                    plot_filt = v_filt[edge_offset : edge_offset + show_pts]
-                    t_ms_plot = np.linspace(0, show_duration_ms, len(plot_raw))
+                        y_min, y_max = 0.0, 3.3
 
                     if active_tab == 0:  # Tab 0: Quad Filter View
                         with self.fig_quad.batch_update():
-                            self.fig_quad.data[0].x = t_ms_plot
-                            self.fig_quad.data[0].y = plot_raw
-                            self.fig_quad.data[1].x = [0, show_duration_ms]
+                            self.fig_quad.data[0].x = t_ms
+                            self.fig_quad.data[0].y = v_raw
+                            self.fig_quad.data[1].x = [0, t_ms[-1]]
                             self.fig_quad.data[1].y = [trig_v, trig_v]
-                            self.fig_quad.data[2].x = t_ms_plot
-                            self.fig_quad.data[2].y = plot_filt
+                            self.fig_quad.data[2].x = t_ms
+                            self.fig_quad.data[2].y = v_filt
                             self.fig_quad.data[3].x = freqs
                             self.fig_quad.data[3].y = mags
-                            self.fig_quad.layout.xaxis.range = [0, show_duration_ms]
-                            self.fig_quad.layout.xaxis2.range = [0, show_duration_ms]
+                            self.fig_quad.layout.yaxis.range = [y_min, y_max]
+                            self.fig_quad.layout.yaxis2.range = [y_min, y_max]
                             self.fig_quad.layout.xaxis3.range = [0, max_span]
 
                     elif active_tab == 1:  # Tab 1: Time Overlay
                         with self.fig_overlay.batch_update():
-                            self.fig_overlay.data[0].x = t_ms_plot
-                            self.fig_overlay.data[0].y = plot_raw
-                            self.fig_overlay.data[1].x = t_ms_plot
-                            self.fig_overlay.data[1].y = plot_filt
-                            self.fig_overlay.layout.xaxis.range = [0, show_duration_ms]
+                            self.fig_overlay.data[0].x = t_ms
+                            self.fig_overlay.data[0].y = v_raw
+                            self.fig_overlay.data[1].x = t_ms
+                            self.fig_overlay.data[1].y = v_filt
+                            self.fig_overlay.layout.yaxis.range = [y_min, y_max]
+                            self.fig_overlay.layout.xaxis.range = [0, t_ms[-1]]
 
                     elif active_tab == 2:  # Tab 2: Raw Input View
                         with self.fig_raw_view.batch_update():
-                            self.fig_raw_view.data[0].x = t_ms_plot
-                            self.fig_raw_view.data[0].y = plot_raw
-                            self.fig_raw_view.data[1].x = [0, show_duration_ms]
+                            self.fig_raw_view.data[0].x = t_ms
+                            self.fig_raw_view.data[0].y = v_raw
+                            self.fig_raw_view.data[1].x = [0, t_ms[-1]]
                             self.fig_raw_view.data[1].y = [trig_v, trig_v]
                             self.fig_raw_view.data[2].x = freqs
                             self.fig_raw_view.data[2].y = mags
-                            self.fig_raw_view.layout.xaxis.range = [0, show_duration_ms]
+                            self.fig_raw_view.layout.yaxis.range = [y_min, y_max]
                             self.fig_raw_view.layout.xaxis2.range = [0, max_span]
 
                     elif active_tab == 3:  # Tab 3: Filtered View
                         with self.fig_filt_view.batch_update():
-                            self.fig_filt_view.data[0].x = t_ms_plot
-                            self.fig_filt_view.data[0].y = plot_filt
+                            self.fig_filt_view.data[0].x = t_ms
+                            self.fig_filt_view.data[0].y = v_filt
                             self.fig_filt_view.data[1].x = freqs
                             self.fig_filt_view.data[1].y = mags
-                            self.fig_filt_view.layout.xaxis.range = [0, show_duration_ms]
+                            self.fig_filt_view.layout.yaxis.range = [y_min, y_max]
                             self.fig_filt_view.layout.xaxis2.range = [0, max_span]
 
                     self.readout_stats.value = (
@@ -461,10 +470,10 @@ class AudioFilterDashboard:
         self._single_done = False
 
     def display(self):
-        r1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.autorange_toggle, self.clear_log_btn, self.readout_stats], layout=widgets.Layout(gap="10px", margin="0 0 8px 0"))
-        r2 = widgets.HBox([self.btn_preset_bass, self.btn_preset_fullbass, self.btn_preset_vocals, self.btn_preset_highpass, self.btn_preset_notch, self.btn_preset_bypass], layout=widgets.Layout(gap="8px", margin="0 0 8px 0"))
-        r3 = widgets.HBox([self.filter_mode_dd, self.low_cut_slider, self.low_cut_input, self.high_cut_slider, self.high_cut_input])
-        r4 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_src_dd, self.trig_level_slider, self.trig_level_input, self.fft_span_dd])
+        r1 = widgets.HBox([self.start_btn, self.stop_btn, self.force_btn, self.autorange_toggle, self.clear_log_btn, self.readout_stats], layout=widgets.Layout(gap="10px", margin="0 0 8px 0", align_items="center"))
+        r2 = widgets.HBox([self.preset_label, self.btn_preset_bass, self.btn_preset_fullbass, self.btn_preset_vocals, self.btn_preset_highpass, self.btn_preset_notch, self.btn_preset_bypass], layout=widgets.Layout(gap="8px", margin="0 0 8px 0", align_items="center"))
+        r3 = widgets.HBox([self.tune_label, self.filter_mode_dd, self.low_cut_slider, self.low_cut_input, self.high_cut_slider, self.high_cut_input], layout=widgets.Layout(gap="6px", margin="0 0 8px 0", align_items="center"))
+        r4 = widgets.HBox([self.trig_mode_dd, self.trig_edge_dd, self.trig_src_dd, self.trig_level_slider, self.trig_level_input, self.fft_span_dd], layout=widgets.Layout(gap="8px", margin="0 0 8px 0", align_items="center"))
 
-        self.control_panel = widgets.VBox([r1, r2, r3, r4], layout=widgets.Layout(margin="0 0 12px 0"))
+        self.control_panel = widgets.VBox([r1, r2, r3, r4], layout=widgets.Layout(margin="0 0 14px 0"))
         display(widgets.VBox([self.control_panel, self.tabs]))
