@@ -296,18 +296,23 @@ class OscilloscopeOverlay(Overlay):
         unit: str = "dBV",
         window: str = "hann",
         crop_startup_samples: int = 8,
-        timeout: float = 0.5
+        timeout: float = 1.0
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Synchronously captures all 3 hardware DMA streams in parallel with automatic
-        1-frame pipeline advance and calibrated 1:1 amplitude reconstruction:
+        2-frame pipeline steady-state advance and calibrated 1:1 amplitude reconstruction:
         Returns: (voltages_a0, voltages_a1, voltages_filtered, freqs_hz, mags)
         """
         if self.dma_filtered is None:
-            # Fallback if 3rd DMA not present
             v_a0, v_a1 = self.capture_stereo()
             freqs, mags = self.capture_fft(unit=unit, window=window)
             return v_a0, v_a1, v_a0, freqs, mags
+
+        # If AD3 wavegen was just started, ensure its background USB handle is ready
+        if hasattr(self, "wavegen") and self.wavegen.is_running and not self.wavegen.is_ready:
+            t_wait = time.time()
+            while not self.wavegen.is_ready and time.time() - t_wait < 2.0:
+                time.sleep(0.05)
 
         def _dma_reset_all():
             for dma_block in [self.xadc.dma, self.fft.dma, self.dma_filtered]:
@@ -332,10 +337,11 @@ class OscilloscopeOverlay(Overlay):
                     raise TimeoutError("[OscilloscopeOverlay] 3-DMA Synchronous capture timed out.")
                 time.sleep(0.0005)
 
-        # 1. Warm-up transfer to advance the 1-frame FFT/IFFT hardware pipeline latency
+        # 1. Advance the 2-frame hardware FFT/IFFT pipeline latency to reach steady state
+        _single_shot_capture()
         _single_shot_capture()
 
-        # 2. Steady-state measurement transfer
+        # 2. Capture final steady-state measurement frame
         _single_shot_capture()
 
         # 3. Extract Raw Time Stereo (DMA 0)
@@ -345,12 +351,12 @@ class OscilloscopeOverlay(Overlay):
         v_a0 = (raw_ch1 >> 4) * (3.3 / 4095.0)
         v_a1 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        # 4. Extract Filtered Time (DMA 2) with Calibrated 1:1 Amplitude
+        # 4. Extract Filtered Time (DMA 2) with 1:1 Amplitude Matching
         raw_filt = np.array(self._buffer_filtered, copy=False).astype(np.float64)
         ac_filt = (raw_filt - 32768.0) / 32768.0 * 1.65
         v_filt = np.clip(1.65 + ac_filt, 0.0, 3.3)
 
-        # Crop startup/boundary transients
+        # Crop startup/boundary words
         if crop_startup_samples > 0:
             v_a0 = v_a0[crop_startup_samples:-crop_startup_samples]
             v_a1 = v_a1[crop_startup_samples:-crop_startup_samples]

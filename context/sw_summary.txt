@@ -9,14 +9,15 @@ Branch Tracking Status:
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/pl-freq-filter-ifft       cc800dc feat(filter_dashboard): overhaul 4-row layout, 720px height, and full 20.48ms window
+* feat/pl-freq-filter-ifft       59939b7 docs(notebooks): finalize 07_pl_hardware_filter_test with end-to-end verification suite
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
   main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* cc800dc  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : feat(filter_dashboard): overhaul 4-row layout, 720px height, and full 20.48ms window (SiririComun)
+* 59939b7  (HEAD -> feat/pl-freq-filter-ifft, origin/feat/pl-freq-filter-ifft) - 2026-08-26 : docs(notebooks): finalize 07_pl_hardware_filter_test with end-to-end verification suite (SiririComun)
+* cc800dc  - 2026-08-26 : feat(filter_dashboard): overhaul 4-row layout, 720px height, and full 20.48ms window (SiririComun)
 * a2a4824  - 2026-08-26 : fix(overlay): add automatic 1-frame pipeline advance and calibrated 1:1 amplitude scaling (SiririComun)
-* a7885b5  (origin/feat/pl-freq-filter-ifft) - 2026-08-26 : chore(hardware): pin overlay to v1.6.0-rc2 with Hermitian symmetric filter (SiririComun)
+* a7885b5  - 2026-08-26 : chore(hardware): pin overlay to v1.6.0-rc2 with Hermitian symmetric filter (SiririComun)
 * 557b195  - 2026-08-26 : fix(filter): write REG_FFT_LEN to sync transform length with spectral mask (SiririComun)
 * 8d285b6  - 2026-08-26 : fix(overlay): calibrate IFFT amplitude gain and update notebook 07 test suite (SiririComun)
 * a28afec  - 2026-08-25 : fix(filter_dashboard): resolve indentation error and complete full 4-tab dashboard (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 * 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)
 * a845b0c  - 2026-08-25 : chore(hardware): pin hardware overlay to v1.6.0-rc1 with PL IFFT filter (SiririComun)
 * 2512407  (origin/main, origin/feat/continuous-audio-recorder, origin/HEAD, main, feat/continuous-audio-recorder) - 2026-08-25 : fix(audio_dashboard): add display_window kwargs and include in context tracking (SiririComun)
-* 22b410b  - 2026-08-25 : fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs (SiririComun)
-* 4a37e3f  - 2026-08-25 : fix(driver): harmonize HardwareTrigger, StreamingFFT, and OscilloscopeOverlay APIs (SiririComun)```
+* 22b410b  - 2026-08-25 : fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs (SiririComun)```
 
 Files structure: 
 
@@ -2189,18 +2189,23 @@ class OscilloscopeOverlay(Overlay):
         unit: str = "dBV",
         window: str = "hann",
         crop_startup_samples: int = 8,
-        timeout: float = 0.5
+        timeout: float = 1.0
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Synchronously captures all 3 hardware DMA streams in parallel with automatic
-        1-frame pipeline advance and calibrated 1:1 amplitude reconstruction:
+        2-frame pipeline steady-state advance and calibrated 1:1 amplitude reconstruction:
         Returns: (voltages_a0, voltages_a1, voltages_filtered, freqs_hz, mags)
         """
         if self.dma_filtered is None:
-            # Fallback if 3rd DMA not present
             v_a0, v_a1 = self.capture_stereo()
             freqs, mags = self.capture_fft(unit=unit, window=window)
             return v_a0, v_a1, v_a0, freqs, mags
+
+        # If AD3 wavegen was just started, ensure its background USB handle is ready
+        if hasattr(self, "wavegen") and self.wavegen.is_running and not self.wavegen.is_ready:
+            t_wait = time.time()
+            while not self.wavegen.is_ready and time.time() - t_wait < 2.0:
+                time.sleep(0.05)
 
         def _dma_reset_all():
             for dma_block in [self.xadc.dma, self.fft.dma, self.dma_filtered]:
@@ -2225,10 +2230,11 @@ class OscilloscopeOverlay(Overlay):
                     raise TimeoutError("[OscilloscopeOverlay] 3-DMA Synchronous capture timed out.")
                 time.sleep(0.0005)
 
-        # 1. Warm-up transfer to advance the 1-frame FFT/IFFT hardware pipeline latency
+        # 1. Advance the 2-frame hardware FFT/IFFT pipeline latency to reach steady state
+        _single_shot_capture()
         _single_shot_capture()
 
-        # 2. Steady-state measurement transfer
+        # 2. Capture final steady-state measurement frame
         _single_shot_capture()
 
         # 3. Extract Raw Time Stereo (DMA 0)
@@ -2238,12 +2244,12 @@ class OscilloscopeOverlay(Overlay):
         v_a0 = (raw_ch1 >> 4) * (3.3 / 4095.0)
         v_a1 = (raw_ch2 >> 4) * (3.3 / 4095.0)
 
-        # 4. Extract Filtered Time (DMA 2) with Calibrated 1:1 Amplitude
+        # 4. Extract Filtered Time (DMA 2) with 1:1 Amplitude Matching
         raw_filt = np.array(self._buffer_filtered, copy=False).astype(np.float64)
         ac_filt = (raw_filt - 32768.0) / 32768.0 * 1.65
         v_filt = np.clip(1.65 + ac_filt, 0.0, 3.3)
 
-        # Crop startup/boundary transients
+        # Crop startup/boundary words
         if crop_startup_samples > 0:
             v_a0 = v_a0[crop_startup_samples:-crop_startup_samples]
             v_a1 = v_a1[crop_startup_samples:-crop_startup_samples]
