@@ -389,59 +389,97 @@ class OscilloscopeOverlay(Overlay):
     ) -> np.ndarray:
         """
         Records multi-second continuous audio from microphone/AD3 input.
+        Drains all active DMA channels in parallel to prevent AXI4-Stream broadcaster stalls.
 
         :param duration_sec: Length of recording in seconds.
-        :param channel: 1 for A0, 2 for A1, or 0 for Stereo tuple.
+        :param channel: 1 for A0, 2 for A1, or 0 for Stereo tuple (Raw mode).
         :param filtered: If True, records the real-time FPGA-filtered stream from axi_dma_2.
-        :param profile: Operating profile ('audio', 'speech', 'bass_zoom').
+        :param profile: Operating profile ('audio', 'speech', 'bass_zoom', 'oscilloscope').
         :param auto_gain: If True, scales volume to maximize dynamic range without clipping.
-        :return: Normalized float64 audio array in range [-1.0, 1.0].
+        :return: Normalized float64 audio array in range [-1.0, 1.0] (or [N, 2] for Stereo).
         """
         if profile is not None:
             self.set_profile(profile)
 
         fs = self.sample_rate_hz
         target_samples = int(duration_sec * fs)
+        samples_per_frame = self.fft_points
+        num_frames = int(np.ceil(target_samples / samples_per_frame))
+
+        # Reset active DMAs to ensure clean starting state
+        for dma_block in [self.xadc.dma, self.fft.dma, self.dma_filtered]:
+            if dma_block:
+                try:
+                    dma_block.mmio.write(0x30, 0x04)
+                    time.sleep(0.001)
+                    dma_block.recvchannel.start()
+                except Exception:
+                    pass
+
+        # Allocate contiguous DMA buffers
+        buf_raw = allocate(shape=(self.packet_size,), dtype="u2")
+        buf_fft = allocate(shape=(self.fft_points,), dtype="u2")
+        buf_filt = allocate(shape=(self.fft_points,), dtype="u2") if self.dma_filtered else None
+
+        raw_ch1_accum = np.empty(num_frames * samples_per_frame, dtype=np.float64)
+        raw_ch2_accum = np.empty(num_frames * samples_per_frame, dtype=np.float64)
+        filt_accum = np.empty(num_frames * samples_per_frame, dtype=np.float64) if self.dma_filtered else None
+
+        try:
+            for frame_idx in range(num_frames):
+                # 1. Queue all active DMAs simultaneously to avoid broadcaster backpressure
+                self.xadc.dma.recvchannel.transfer(buf_raw)
+                self.fft.dma.recvchannel.transfer(buf_fft)
+                if self.dma_filtered and buf_filt:
+                    self.dma_filtered.recvchannel.transfer(buf_filt)
+
+                # 2. Trigger single-frame pulse (0x0B = ARM | AUTO | SINGLE_SHOT)
+                self.trigger.mmio.write(0x00, 0x0B)
+
+                # 3. Wait for DMA transfers to complete
+                self.xadc.dma.recvchannel.wait()
+                self.fft.dma.recvchannel.wait()
+                if self.dma_filtered and buf_filt:
+                    self.dma_filtered.recvchannel.wait()
+
+                offset = frame_idx * samples_per_frame
+
+                # 4. Extract Raw Stereo
+                raw_u16 = np.array(buf_raw, copy=False)
+                v_a0 = (raw_u16[0::2] >> 4) * (3.3 / 4095.0)
+                v_a1 = (raw_u16[1::2] >> 4) * (3.3 / 4095.0)
+                raw_ch1_accum[offset : offset + samples_per_frame] = v_a0
+                raw_ch2_accum[offset : offset + samples_per_frame] = v_a1
+
+                # 5. Extract Filtered Time (if available)
+                if self.dma_filtered and filt_accum is not None:
+                    raw_f = np.array(buf_filt, copy=False)
+                    ac_f = (raw_f.astype(np.float64) - 32768.0) / 32768.0
+                    filt_accum[offset : offset + samples_per_frame] = ac_f
+
+        finally:
+            buf_raw.close()
+            buf_fft.close()
+            if buf_filt:
+                buf_filt.close()
 
         if filtered:
-            if self.dma_filtered is None:
-                raise RuntimeError("Filtered Time DMA (axi_dma_2) not available.")
-            
-            num_frames = int(np.ceil(target_samples / self.fft_points))
-            out_raw = np.empty(num_frames * self.fft_points, dtype=np.uint16)
-            buf = allocate(shape=(self.fft_points,), dtype="u2")
-
-            try:
-                for frame_idx in range(num_frames):
-                    self.dma_filtered.recvchannel.transfer(buf)
-                    self.trigger.mmio.write(0x00, 0x0B)
-                    self.dma_filtered.recvchannel.wait()
-                    offset = frame_idx * self.fft_points
-                    out_raw[offset : offset + self.fft_points] = np.array(buf, copy=False)
-            finally:
-                buf.close()
-
-            ac_signal = (out_raw.astype(np.float64) - 32768.0) / 32768.0
-            if len(ac_signal) > target_samples:
-                ac_signal = ac_signal[:target_samples]
+            if filt_accum is None:
+                raise RuntimeError("Filtered Time DMA (axi_dma_2) not available in this overlay.")
+            ac_signal = filt_accum[:target_samples]
             return normalize_audio(ac_signal, auto_gain=auto_gain)
 
-        # Standard raw stereo recording
-        samples_per_frame_per_ch = self.packet_size // 2
-        num_frames = int(np.ceil(target_samples / samples_per_frame_per_ch))
+        if channel == 0:
+            # Stereo mode
+            ac1 = remove_dc_offset(raw_ch1_accum[:target_samples])
+            ac2 = remove_dc_offset(raw_ch2_accum[:target_samples])
+            s1 = normalize_audio(ac1, auto_gain=auto_gain)
+            s2 = normalize_audio(ac2, auto_gain=auto_gain)
+            return np.column_stack((s1, s2))
 
-        raw_interleaved = self.xadc.capture_continuous_raw(
-            num_frames=num_frames,
-            trigger_unit=self.trigger
-        )
-
-        audio = process_raw_recording(
-            raw_interleaved=raw_interleaved,
-            channel=channel,
-            target_samples=target_samples,
-            auto_gain=auto_gain
-        )
-        return audio
+        selected_raw = raw_ch1_accum if channel == 1 else raw_ch2_accum
+        ac_signal = remove_dc_offset(selected_raw[:target_samples])
+        return normalize_audio(ac_signal, auto_gain=auto_gain)
 
     def play_audio(
         self,

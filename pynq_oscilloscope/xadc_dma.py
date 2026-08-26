@@ -90,17 +90,17 @@ class StreamingXADC:
 
         # 1. Reset DMA channel to clear any stale state
         try:
-            self.dma.mmio.write(0x30, 0x04) # S2MM_DMACR.Reset = 1
+            self.dma.mmio.write(0x30, 0x04)  # S2MM_DMACR.Reset = 1
             time.sleep(0.002)
             self.dma.recvchannel.start()
         except Exception:
             pass
 
-        # 2. Ensure trigger unit is configured for streaming
+        # 2. Ensure trigger unit is configured for continuous streaming
         if trigger_unit is not None:
-            # Force Arm in Auto Mode (Bit 0=1, Bit 1=1)
+            # Force Arm in Auto Mode (Bit 0=1, Bit 1=1) and explicitly clear Single-Shot (Bit 3=0)
             ctrl = trigger_unit.mmio.read(0x00)
-            trigger_unit.mmio.write(0x00, ctrl | 0x03)
+            trigger_unit.mmio.write(0x00, (ctrl & ~0x08) | 0x03)
 
         # 3. Prime the first buffer (Buffer A)
         active_buf = self._buf_a
