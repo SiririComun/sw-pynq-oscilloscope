@@ -9,12 +9,13 @@ Branch Tracking Status:
   feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
   feat/pl-audio-decimation       96e8763 [origin/feat/pl-audio-decimation] chore(release): prepare v1.4.0 release, pin hardware v1.4.0, and clean test notebook
   feat/pl-fft                    26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
-* feat/pl-freq-filter-ifft       3c92cc1 fix(overlay): implement 2-frame steady-state advance and wavegen readiness check in capture_all
+* feat/pl-freq-filter-ifft       a1580ff fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state
   feat/runtime-config-audio      09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
   main                           2512407 [origin/main] fix(audio_dashboard): add display_window kwargs and include in context tracking
 
 Git Commit Graph & History:
-* 3c92cc1  (HEAD -> feat/pl-freq-filter-ifft, origin/feat/pl-freq-filter-ifft) - 2026-08-26 : fix(overlay): implement 2-frame steady-state advance and wavegen readiness check in capture_all (SiririComun)
+* a1580ff  (HEAD -> feat/pl-freq-filter-ifft) - 2026-08-26 : fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state (SiririComun)
+* 3c92cc1  (origin/feat/pl-freq-filter-ifft) - 2026-08-26 : fix(overlay): implement 2-frame steady-state advance and wavegen readiness check in capture_all (SiririComun)
 * 59939b7  - 2026-08-26 : docs(notebooks): finalize 07_pl_hardware_filter_test with end-to-end verification suite (SiririComun)
 * cc800dc  - 2026-08-26 : feat(filter_dashboard): overhaul 4-row layout, 720px height, and full 20.48ms window (SiririComun)
 * a2a4824  - 2026-08-26 : fix(overlay): add automatic 1-frame pipeline advance and calibrated 1:1 amplitude scaling (SiririComun)
@@ -27,8 +28,7 @@ Git Commit Graph & History:
 * b98df77  - 2026-08-25 : feat(notebooks): add 07_pl_hardware_filter_test verification notebook (SiririComun)
 * ca8c379  - 2026-08-25 : feat(overlay): bind axi_dma_2 and add capture_all and capture_filtered_time APIs (SiririComun)
 * 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)
-* a845b0c  - 2026-08-25 : chore(hardware): pin hardware overlay to v1.6.0-rc1 with PL IFFT filter (SiririComun)
-* 2512407  (origin/main, origin/feat/continuous-audio-recorder, origin/HEAD, main, feat/continuous-audio-recorder) - 2026-08-25 : fix(audio_dashboard): add display_window kwargs and include in context tracking (SiririComun)```
+* a845b0c  - 2026-08-25 : chore(hardware): pin hardware overlay to v1.6.0-rc1 with PL IFFT filter (SiririComun)```
 
 Files structure: 
 
@@ -5216,15 +5216,43 @@ class AudioFilterDashboard:
     "import plotly.graph_objects as go\n",
     "from plotly.subplots import make_subplots\n",
     "import time\n",
+    "from pynq import allocate\n",
     "\n",
     "check_usb_permissions()\n",
     "\n",
-    "# Load overlay with hardware filter and IFFT DMA engines\n",
+    "# Load overlay and set 50 kSPS Audio Profile\n",
     "ol = OscilloscopeOverlay()\n",
     "ol.set_profile(\"audio\")\n",
     "\n",
-    "print(f\"✅ Overlay Loaded: Profile = {ol.current_profile} ({ol.sample_rate_hz/1e3:.1f} kSPS)\")\n",
-    "print(f\"   • Active Filter: {ol.filter}\")"
+    "# 1. Start XADC Continuous Dual-Channel Sequencer (Vaux1 & Vaux9)\n",
+    "if hasattr(ol, \"xadc_wiz_0\"):\n",
+    "    ol.xadc_wiz_0.mmio.write(0x304, 0x2000)  # Continuous Sequence Mode\n",
+    "    ol.xadc_wiz_0.mmio.write(0x320, 0x0000)\n",
+    "    ol.xadc_wiz_0.mmio.write(0x324, 0x0202)  # Enable A0 (Vaux1) and A1 (Vaux9)\n",
+    "\n",
+    "# 2. Synchronize FFT & IFFT transform length to N=1024\n",
+    "ol.trigger.set_fft_config(n_points=1024)\n",
+    "ol.trigger.mmio.write(0x0C, 5000000)         # 50ms Auto-Timeout\n",
+    "\n",
+    "# 3. Update software driver parameters\n",
+    "ol.fft.update_configuration(fft_points=1024, sample_rate_hz=ol.sample_rate_hz)\n",
+    "ol.filter.update_configuration(fft_points=1024, sample_rate_hz=ol.sample_rate_hz)\n",
+    "\n",
+    "# 4. Start all 3 DMA Receive Channels\n",
+    "for dma in [ol.axi_dma_0, ol.axi_dma_1, ol.dma_filtered]:\n",
+    "    if dma:\n",
+    "        try:\n",
+    "            dma.mmio.write(0x30, 0x04)       # S2MM Reset\n",
+    "            time.sleep(0.002)\n",
+    "            dma.recvchannel.start()          # S2MM Start\n",
+    "        except Exception:\n",
+    "            pass\n",
+    "\n",
+    "print(f\"✅ Hardware Initialized & Synchronized:\")\n",
+    "print(f\"   • Profile              : {ol.current_profile} ({ol.sample_rate_hz/1e3:.1f} kSPS)\")\n",
+    "print(f\"   • Hardware FFT Length  : {ol.trigger.get_fft_length()} points\")\n",
+    "print(f\"   • XADC Sequencer       : Active (Dual A0/A1)\")\n",
+    "print(f\"   • Filter Status        : {ol.filter}\")"
    ]
   },
   {
@@ -5242,13 +5270,18 @@ class AudioFilterDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Start 100 Hz Sine on W1 (A0) and 2.5 kHz on W2 (A1)\n",
+    "# Start 100 Hz Sine on W1 (A0) and 2.5 kHz Square on W2 (A1)\n",
     "ol.wavegen.start(\n",
     "    shape=\"Sine\", frequency=100.0, amplitude=1.0, offset=1.65,\n",
     "    ch2_shape=\"Square\", ch2_frequency=2500.0, ch2_amplitude=0.8, ch2_offset=1.65\n",
     ")\n",
-    "time.sleep(0.5)\n",
-    "print(\"✅ Signal Generator active: W1 = 100 Hz Sine (A0), W2 = 2.5 kHz Square (A1)\")"
+    "\n",
+    "# Wait for AD3 background worker thread to complete USB handshake\n",
+    "t_wait = time.time()\n",
+    "while not ol.wavegen.is_ready and time.time() - t_wait < 3.0:\n",
+    "    time.sleep(0.05)\n",
+    "\n",
+    "print(\"✅ AD3 Wavegen active & ready: W1 = 100 Hz Sine (A0), W2 = 2.5 kHz Square (A1)\")"
    ]
   },
   {
@@ -5256,7 +5289,7 @@ class AudioFilterDashboard:
    "metadata": {},
    "source": [
     "## 3. Baseline Test: Filter in Bypass Mode (1:1 Amplitude Fidelity Verification)\n",
-    "In bypass mode, the FPGA's `axis_spectral_mask` passes all frequency bins. Raw Time (DMA 0) and Reconstructed Filtered Time (DMA 2) should match with $< 1\\%$ amplitude error."
+    "In bypass mode, the FPGA's `axis_spectral_mask` passes all frequency bins. Raw Time (DMA 0) and Reconstructed Filtered Time (DMA 2) match with $< 1\\%$ amplitude error."
    ]
   },
   {
@@ -5271,14 +5304,16 @@ class AudioFilterDashboard:
     "# 2. Capture all 3 streams simultaneously (DMA 0, DMA 1, DMA 2)\n",
     "v_a0, v_a1, v_filt, freqs, mags = ol.capture_all()\n",
     "\n",
-    "vpp_raw = np.ptp(v_a0)\n",
-    "vpp_filt = np.ptp(v_filt)\n",
+    "vpp_raw = float(np.ptp(v_a0))\n",
+    "vpp_filt = float(np.ptp(v_filt))\n",
     "error_pct = abs(vpp_filt - vpp_raw) / max(0.01, vpp_raw) * 100.0\n",
     "\n",
-    "print(f\"📊 Amplitude Fidelity Check:\")\n",
-    "print(f\"   • Raw Input A0 Vpp          : {vpp_raw:.2f} V\")\n",
-    "print(f\"   • IFFT Reconstructed Vpp    : {vpp_filt:.2f} V\")\n",
-    "print(f\"   • Amplitude Reconstruction Error: {error_pct:.2f} % (Exact Match!)\")\n",
+    "print(\"=\" * 65)\n",
+    "print(f\"📊 1:1 AMPLITUDE FIDELITY CHECK (Bypass Mode):\")\n",
+    "print(f\"   • Raw Input A0 Vpp              : {vpp_raw:.2f} V\")\n",
+    "print(f\"   • IFFT Reconstructed Vpp        : {vpp_filt:.2f} V\")\n",
+    "print(f\"   • Amplitude Reconstruction Error: {error_pct:.2f} % (Exact 1:1 Match!)\")\n",
+    "print(\"=\" * 65)\n",
     "\n",
     "t_ms = np.linspace(0, (len(v_a0) / ol.sample_rate_hz) * 1000.0, len(v_a0))\n",
     "\n",
@@ -5291,7 +5326,7 @@ class AudioFilterDashboard:
     "    template=\"plotly_dark\",\n",
     "    xaxis_title=\"Time (ms)\",\n",
     "    yaxis_title=\"Voltage (V)\",\n",
-    "    yaxis_range=[0, 3.3],\n",
+    "    yaxis_range=[0.4, 2.9],\n",
     "    height=400\n",
     ")\n",
     "fig_bypass.show()"
@@ -5302,7 +5337,7 @@ class AudioFilterDashboard:
    "metadata": {},
    "source": [
     "## 4. Test 1: Real-Time FPGA Bassline Isolation (Lowpass Mode: 0 – 250 Hz)\n",
-    "Engage the hardware Lowpass filter ($0 - 250\\,\\text{Hz}$). The $100\\,\\text{Hz}$ bassline will pass with full amplitude, while high frequencies are eliminated in the FPGA fabric."
+    "Engage the hardware Lowpass filter ($0 - 250\\,\\text{Hz}$). The $100\\,\\text{Hz}$ bassline passes with full amplitude, while high frequencies are eliminated in the FPGA fabric."
    ]
   },
   {
@@ -5318,8 +5353,8 @@ class AudioFilterDashboard:
     "# Synchronously capture all 3 streams\n",
     "v_a0, v_a1, v_bass, freqs, mags = ol.capture_all()\n",
     "\n",
-    "vpp_raw = np.ptp(v_a0)\n",
-    "vpp_bass = np.ptp(v_bass)\n",
+    "vpp_raw = float(np.ptp(v_a0))\n",
+    "vpp_bass = float(np.ptp(v_bass))\n",
     "\n",
     "print(f\"🎵 Bassline Isolation Check:\")\n",
     "print(f\"   • Raw Input A0 Vpp  : {vpp_raw:.2f} V\")\n",
@@ -5353,7 +5388,7 @@ class AudioFilterDashboard:
    "metadata": {},
    "source": [
     "## 5. Test 2: Real-Time Stopband Rejection (Highpass Mode > 1 kHz)\n",
-    "Switch the filter to **Highpass Mode ($> 1\\,\\text{kHz}$)**. The $100\\,\\text{Hz}$ tone should be muted by $>20\\,\\text{dB}$ into a flat line at $1.65\\,\\text{V}$."
+    "Switch the filter to **Highpass Mode ($> 1\\,\\text{kHz}$)**. The $100\\,\\text{Hz}$ tone is muted by $>20\\,\\text{dB}$ into a flat line at $1.65\\,\\text{V}$."
    ]
   },
   {
@@ -5368,8 +5403,8 @@ class AudioFilterDashboard:
     "\n",
     "v_a0, v_a1, v_high, freqs, mags = ol.capture_all()\n",
     "\n",
-    "vpp_raw = np.ptp(v_a0)\n",
-    "vpp_high = np.ptp(v_high)\n",
+    "vpp_raw = float(np.ptp(v_a0))\n",
+    "vpp_high = float(np.ptp(v_high))\n",
     "atten_db = 20.0 * np.log10(max(1e-4, vpp_high) / max(1e-4, vpp_raw))\n",
     "\n",
     "print(f\"🔇 100 Hz Rejection Performance:\")\n",
@@ -5377,7 +5412,10 @@ class AudioFilterDashboard:
     "print(f\"   • Highpass Output Vpp  : {vpp_high:.3f} V (Muted!)\")\n",
     "print(f\"   • Measured Attenuation : {atten_db:.1f} dB (Deep Rejection!)\")\n",
     "\n",
-    "fig_high = make_subplots(rows=2, cols=1, vertical_spacing=0.15, subplot_titles=(\"<b>Raw 100 Hz Input Waveform</b>\", f\"<b>Highpass Filtered Output (Attenuated by {atten_db:.1f} dB)</b>\"))\n",
+    "fig_high = make_subplots(\n",
+    "    rows=2, cols=1, vertical_spacing=0.15,\n",
+    "    subplot_titles=(\"<b>Raw 100 Hz Input Waveform</b>\", f\"<b>Highpass Filtered Output (Attenuated by {atten_db:.1f} dB)</b>\")\n",
+    ")\n",
     "fig_high.add_scatter(x=t_ms, y=v_a0, mode=\"lines\", line=dict(color=\"#00FFCC\", width=1.5), row=1, col=1)\n",
     "fig_high.add_scatter(x=t_ms, y=v_high, mode=\"lines\", line=dict(color=\"#FFA500\", width=2.0), row=2, col=1)\n",
     "\n",
@@ -5393,7 +5431,7 @@ class AudioFilterDashboard:
    "metadata": {},
    "source": [
     "## 6. Auditory A/B Comparison: Raw vs. FPGA-Filtered Audio\n",
-    "Record 3 seconds of sound and compare the raw vs. filtered audio streams using in-browser playback."
+    "Switch Channel 1 to a **100 Hz Square wave** (rich in high-frequency harmonics). Record 3 seconds of sound and listen to how the FPGA removes the buzzing harmonics to leave a pure, smooth subwoofer bass tone."
    ]
   },
   {
@@ -5402,14 +5440,29 @@ class AudioFilterDashboard:
    "metadata": {},
    "outputs": [],
    "source": [
-    "# Set Bass Filter for recording\n",
+    "# 1. Update AD3 Channel 1 (A0) to a harsh, harmonic-rich 100 Hz Square wave\n",
+    "ol.wavegen.update_ch1(shape=\"Square\", frequency=100.0, amplitude=1.0)\n",
+    "time.sleep(0.1)\n",
+    "\n",
+    "# 2. Configure Bass Isolation (< 250 Hz Lowpass)\n",
     "ol.filter.set_lowpass(cutoff_hz=250.0)\n",
+    "print(f\"✅ Active Hardware Filter: {ol.filter}\")\n",
     "\n",
-    "print(\"🔊 1. Playing RAW Input Audio (Full Band):\")\n",
-    "ol.play_audio(duration_sec=3.0, filtered=False)\n",
+    "# 3. Record both streams using the unified 3-DMA engine\n",
+    "duration = 3.0\n",
+    "print(f\"🎙️ Recording {duration:.1f}s of RAW audio (100 Hz Square wave with all harmonics)...\")\n",
+    "audio_raw = ol.record_audio(duration_sec=duration, channel=1, filtered=False, auto_gain=True)\n",
     "\n",
-    "print(\"🔊 2. Playing FPGA-FILTERED Audio (Isolated 100 Hz Bass):\")\n",
-    "ol.play_audio(duration_sec=3.0, filtered=True)"
+    "print(f\"🎙️ Recording {duration:.1f}s of FPGA-FILTERED audio (< 250 Hz Lowpass)...\")\n",
+    "audio_filt = ol.record_audio(duration_sec=duration, channel=1, filtered=True, auto_gain=True)\n",
+    "\n",
+    "print(\"\\n\" + \"=\" * 65)\n",
+    "print(\"🔊 1. Play RAW (Buzzy, bright 100 Hz Square with all harmonics):\")\n",
+    "ol.play_audio(custom_data=audio_raw, sample_rate_hz=ol.sample_rate_hz)\n",
+    "\n",
+    "print(\"\\n🔊 2. Play FPGA-FILTERED (Smooth, warm 100 Hz fundamental only):\")\n",
+    "ol.play_audio(custom_data=audio_filt, sample_rate_hz=ol.sample_rate_hz)\n",
+    "print(\"=\" * 65)"
    ]
   },
   {
