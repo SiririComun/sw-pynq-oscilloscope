@@ -1,11 +1,19 @@
+==============================================================================
+⚙️  PROJECT ENVIRONMENT & TOOLCHAIN CONSTRAINTS
+==============================================================================
+• Repository State    : main @ f7fb08a
+• Pinned HW Overlay   : SiririComun/hw-xadc-dma-overlays @ v1.6.0
+• Package Version     : v1.6.0
+==============================================================================
+
 Git Context & Branch Topology:
 
 ```log
-Current Branch: feat/ci-workflow-cog | Working Tree: Dirty (1 modified files)
+Current Branch: main | Working Tree: Dirty (2 modified files)
 
 Branch Tracking & Divergence Status:
 feat/acoustic-analytics-curves                ffa2f0d [origin/feat/acoustic-analytics-curves] docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-* feat/ci-workflow-cog                          f6158b5 [origin/feat/ci-workflow-cog] ci(testing): add automated multi-python test matrix and mocked hardware unit tests
+  feat/ci-workflow-cog                          f7fb08a [origin/feat/ci-workflow-cog] ci(integrity): add hardware.json release pinning and asset validation test
   feat/continuous-audio-recorder                2512407 [origin/feat/continuous-audio-recorder] fix(audio_dashboard): add display_window kwargs and include in context tracking
   feat/dual-xadc                                e85a00c [origin/feat/dual-xadc] chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   feat/hw-trigger                               cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
@@ -13,10 +21,10 @@ feat/acoustic-analytics-curves                ffa2f0d [origin/feat/acoustic-anal
   feat/pl-fft                                   26e459b [origin/feat/pl-fft] chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   feat/pl-freq-filter-ifft                      e63a9fb chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0
   feat/runtime-config-audio                     09ffe2f [origin/feat/runtime-config-audio] chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
-  main                                          e63a9fb [origin/main] chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0
+* main                                          f7fb08a [origin/main] ci(integrity): add hardware.json release pinning and asset validation test
   remotes/origin/HEAD                           -> origin/main
   remotes/origin/feat/acoustic-analytics-curves ffa2f0d docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum
-  remotes/origin/feat/ci-workflow-cog           f6158b5 ci(testing): add automated multi-python test matrix and mocked hardware unit tests
+  remotes/origin/feat/ci-workflow-cog           f7fb08a ci(integrity): add hardware.json release pinning and asset validation test
   remotes/origin/feat/continuous-audio-recorder 2512407 fix(audio_dashboard): add display_window kwargs and include in context tracking
   remotes/origin/feat/dual-xadc                 e85a00c chore(release): prepare v1.3.0 release, bump version to 1.3.0, and clean internal test notebook
   remotes/origin/feat/hw-trigger                cff6d3c docs: add dashboard screenshot and finalize UI guide for v1.1.0
@@ -24,7 +32,7 @@ feat/acoustic-analytics-curves                ffa2f0d [origin/feat/acoustic-anal
   remotes/origin/feat/pl-fft                    26e459b chore(release): bump version to 1.2.0, pin hardware to v1.2.0, and finalize documentation
   remotes/origin/feat/pl-freq-filter-ifft       e63a9fb chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0
   remotes/origin/feat/runtime-config-audio      09ffe2f chore(release): prepare v1.4.5 release, pin hardware v1.4.5, and clean internal test notebooks
-  remotes/origin/main                           e63a9fb chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0
+  remotes/origin/main                           f7fb08a ci(integrity): add hardware.json release pinning and asset validation test
 
 Repository Tags & Release History:
 v1.6.0          release(sw): v1.6.0 with hardware filter dashboard, IFFT capture, and 3-DMA recording
@@ -37,9 +45,10 @@ v1.1.0          Release v1.1.0: OscilloscopeOverlay, HardwareTrigger, and UI das
 v1.0.1          Release v1.0.1: PYNQ Oscilloscope package
 
 Multi-Branch Git Commit Graph:
-* f6158b5  (HEAD -> feat/ci-workflow-cog, origin/feat/ci-workflow-cog) - 2026-08-26 : ci(testing): add automated multi-python test matrix and mocked hardware unit tests (SiririComun)
+* f7fb08a  (HEAD -> main, origin/main, origin/feat/ci-workflow-cog, origin/HEAD, feat/ci-workflow-cog) - 2026-08-26 : ci(integrity): add hardware.json release pinning and asset validation test (SiririComun)
+* f6158b5  - 2026-08-26 : ci(testing): add automated multi-python test matrix and mocked hardware unit tests (SiririComun)
 * cd750e6  - 2026-08-26 : feat(context): integrate Cog submodule and compact notebook context (SiririComun)
-* e63a9fb  (tag: v1.6.0, origin/main, origin/feat/pl-freq-filter-ifft, origin/HEAD, main, feat/pl-freq-filter-ifft) - 2026-08-26 : chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0 (SiririComun)
+* e63a9fb  (tag: v1.6.0, origin/feat/pl-freq-filter-ifft, feat/pl-freq-filter-ifft) - 2026-08-26 : chore(release): bump version to 1.6.0 and pin hardware overlay to v1.6.0 (SiririComun)
 * 59ec1a6  - 2026-08-26 : docs(readme): update documentation for v1.6.0 with PyPI-compliant assets and filter dashboard (SiririComun)
 * 65f823d  - 2026-08-26 : docs(notebooks): polish 07_pl_hardware_filter_test with verified auditory A/B comparison and 3-DMA streaming (SiririComun)
 * a1580ff  - 2026-08-26 : fix(dma): synchronize 3-DMA continuous audio recording and clear single-shot trigger state (SiririComun)
@@ -51,28 +60,6 @@ Multi-Branch Git Commit Graph:
 * 557b195  - 2026-08-26 : fix(filter): write REG_FFT_LEN to sync transform length with spectral mask (SiririComun)
 * 8d285b6  - 2026-08-26 : fix(overlay): calibrate IFFT amplitude gain and update notebook 07 test suite (SiririComun)
 * a28afec  - 2026-08-25 : fix(filter_dashboard): resolve indentation error and complete full 4-tab dashboard (SiririComun)
-* 0ec5816  - 2026-08-25 : feat(filter_dashboard): complete full 4-tab filter dashboard with live presets and auto-ranging (SiririComun)
-* 9cc7e7d  - 2026-08-25 : feat(dashboard): add AudioFilterDashboard with live cutoff sliders and 4-trace display (SiririComun)
-* b98df77  - 2026-08-25 : feat(notebooks): add 07_pl_hardware_filter_test verification notebook (SiririComun)
-* ca8c379  - 2026-08-25 : feat(overlay): bind axi_dma_2 and add capture_all and capture_filtered_time APIs (SiririComun)
-* 5e9edb7  - 2026-08-25 : feat(driver): add HardwareFilter driver for axis_spectral_mask IP (SiririComun)
-* a845b0c  - 2026-08-25 : chore(hardware): pin hardware overlay to v1.6.0-rc1 with PL IFFT filter (SiririComun)
-* 2512407  (origin/feat/continuous-audio-recorder, feat/continuous-audio-recorder) - 2026-08-25 : fix(audio_dashboard): add display_window kwargs and include in context tracking (SiririComun)
-* 22b410b  - 2026-08-25 : fix(dashboard): resolve AudioDashboard import, fs_per_ch property, and analytic kwargs (SiririComun)
-* 4a37e3f  - 2026-08-25 : fix(driver): harmonize HardwareTrigger, StreamingFFT, and OscilloscopeOverlay APIs (SiririComun)
-* 065ee46  - 2026-08-25 : fix(analytics): add __init__ and analyze_stereo instance method to AcousticAnalytics (SiririComun)
-* f08d33f  - 2026-08-25 : feat(notebooks): add 06_audio_recording_and_playback microphone verification notebook (SiririComun)
-* 19fe636  - 2026-08-25 : feat(overlay): integrate multi-second record_audio and in-memory play_audio methods (SiririComun)
-* 11a7b2d  - 2026-08-25 : feat(dsp): implement audio conditioning, DC-removal, and in-memory WAV encoder (SiririComun)
-* 1f36625  - 2026-08-25 : feat(dma): implement double-buffered continuous multi-frame DMA streaming (SiririComun)
-*   a09aad0  (tag: v1.5.0) - 2026-08-22 : merge: feat(release) release v1.5.0 with 3-tier instrument suite and 5-notebook curriculum (SiririComun)
-|\  
-| * ffa2f0d  (origin/feat/acoustic-analytics-curves, feat/acoustic-analytics-curves) - 2026-08-22 : docs(readme): finalize v1.5.0 documentation with 3-tier dashboard suite and 5-notebook curriculum (SiririComun)
-| * 349e18e  - 2026-08-22 : docs(notebooks): renumber suite to 5 notebooks and align metadata with v1.5.0 (SiririComun)
-| * c0a1628  - 2026-08-22 : refactor(notebooks): remove legacy static 04 FFT notebook in favor of live streaming instruments (SiririComun)
-| * f892bbf  - 2026-08-22 : chore(release): pin hardware overlay to v1.5.0 and bump package version to 1.5.0 (SiririComun)
-| * 9f160b7  - 2026-08-22 : feat(dashboard): upgrade AD3 oscilloscope to 500 kSPS with 10 Hz - 1 MHz span and aliasing exploration (SiririComun)
-| * 17acf8c  - 2026-08-21 : fix(trigger): correct PG109 bit shift order (fwd_bit << 8) | nfft for FFT config (SiririComun)
 ```
 
 setup.py: (setup.py)
@@ -4412,7 +4399,6 @@ class AudioFilterDashboard:
 ```python
 # %% [markdown] Cell 1
 # Notebook 1: Analog Discovery 3 (AD3) Getting Started Guide
-# 
 # This notebook demonstrates how to verify Digilent WaveForms drivers and programmatically generate analog waveforms using the **`AD3SignalGenerator`** class from `pynq_oscilloscope`.
 
 # %% [markdown] Cell 2
@@ -4447,7 +4433,7 @@ except Exception as e:
 
 # %% [markdown] Cell 6
 ## 3. Non-Blocking Waveform Generation
-# Using `AD3SignalGenerator`, we launch signal generation in a background worker thread. This keeps the Jupyter kernel responsive for subsequent cells.
+# Using `AD3SignalGenerator`, we launch signal generation in a background worker thread.
 
 # %% [code] Cell 7
 import time
@@ -4478,12 +4464,11 @@ print("Wavegen stopped cleanly.")
 ```python
 # %% [markdown] Cell 1
 # Notebook 2: Standalone High-Speed XADC DMA Acquisition & Hardware Triggering
-# 
 # This notebook demonstrates how to load the hardware overlay using **`OscilloscopeOverlay`**, configure the FPGA **`HardwareTrigger`** registers, and capture 1 MSPS analog streams direct to DDR memory.
 
 # %% [markdown] Cell 2
 ## 1. Load Hardware Overlay
-# Instantiate `OscilloscopeOverlay()`. It automatically identifies the board (PYNQ-Z2) and fetches the pinned release binaries from GitHub Releases.
+# Instantiate `OscilloscopeOverlay()`.
 
 # %% [code] Cell 3
 from pynq_oscilloscope import OscilloscopeOverlay
@@ -4540,9 +4525,7 @@ plt.show()
 ```python
 # %% [markdown] Cell 1
 # Notebook 3: Academic Dual-Channel Oscilloscope & Spectrum Analyzer Dashboard
-# 
 # This notebook deploys the interactive **Laboratory Instrument** with Analog Discovery 3 (AD3) integration on the PYNQ-Z2 (`v1.5.0`).
-# 
 ### 🌟 Academic Instrument Features:
 # - 📈 **500 kSPS Dual Scope:** Real-time synchronous traces for **CH1 (A0, Cyan)** and **CH2 (A1, Magenta)** with hardware edge triggering and live threshold line.
 # - ⚡ **Wideband AD3 Wavegen Controls ($10\text{ Hz} - 1\text{ MHz}$):** Real-time independent frequency, amplitude, and waveform controls for **W1 (A0)** and **W2 (A1)**.
@@ -4587,11 +4570,8 @@ print("🔒 Dashboard stopped and memory released.")
 ```python
 # %% [markdown] Cell 1
 # Notebook 4: Real-Time Dual-Channel Audio & Microphone Dashboard
-# 
 # This notebook deploys the dedicated **`AudioDashboard`** using `OscilloscopeOverlay` (`v1.5.0`).
-# 
 # Designed specifically for passive **MAX4466 electret microphones** (or any analog audio sensor on pins **A0** and **A1**), this dashboard runs completely independently without requiring an Analog Discovery 3 (AD3).
-# 
 ### 🌟 Audio Instrument Features:
 # - 🎙 **Passive Mode (Zero AD3 Dependency):** Starts instantly with no background worker threads or missing hardware warnings.
 # - ⏱ **Expanded $40.96\,\text{ms}$ Audio Timebase:** Displays multi-cycle acoustic waveforms for speech, musical instruments, and bass frequencies ($20\,\text{Hz} - 250\,\text{Hz}$).
@@ -4639,7 +4619,6 @@ print("🔒 Audio Dashboard stopped and memory released.")
 ```python
 # %% [markdown] Cell 1
 # Notebook 5: Real-Time Acoustic Analytics (Amplitude vs. Time & Spectrogram Engine)
-# 
 # This notebook demonstrates the high-precision **Acoustic Analytics & Diagnostic Engine** (`v1.5.0`), featuring:
 # - 📈 **Amplitude vs. Time:** Instantaneous physical Hilbert analytic envelopes ($A(t) = \sqrt{x^2 + \hat{x}^2}$) and Inter-aural Level Differences ($\Delta L(t)$ in dB).
 # - 📊 **Frequency vs. Time:** 2D Short-Time Fourier Transform (STFT) rolling waterfall spectrograms with Blackman-Harris windowing.
@@ -4658,7 +4637,7 @@ check_usb_permissions()
 
 # %% [markdown] Cell 4
 ## 2. Load the Upgraded Hardware Overlay
-# Instantiate `OscilloscopeOverlay()`. It automatically loads the `v1.5.0-rc1` bitstream with simultaneous dual-ADC sampling and clean FFT demultiplexing.
+# Instantiate `OscilloscopeOverlay()`.
 
 # %% [code] Cell 5
 ol = OscilloscopeOverlay()
@@ -4710,9 +4689,7 @@ print("🔒 Analytics Dashboard stopped and memory released.")
 ```python
 # %% [markdown] Cell 1
 # Notebook 6: Real-World Microphone Audio Recording & In-Jupyter Playback
-# 
 # This notebook demonstrates how to record live sound from **MAX4466 / MAX9814 electret microphones** connected to the PYNQ-Z2 board using the multi-second continuous DMA engine.
-# 
 ### Hardware Wiring:
 # | Pin | PYNQ-Z2 Connection | Description |
 # | :--- | :--- | :--- |
@@ -4720,8 +4697,6 @@ print("🔒 Analytics Dashboard stopped and memory released.")
 # | **GND** | **GND** | Power Header |
 # | **OUT (Mic 1)** | **Header J1 Pin A0** | Channel 1 (1.65V DC bias) |
 # | **OUT (Mic 2)** | **Header J1 Pin A1** | Channel 2 (1.65V DC bias) |
-# 
-# *(No Analog Discovery 3 required — you can speak, whistle, or play music into the microphones!)*
 
 # %% [markdown] Cell 2
 ## 1. Initialize Overlay in Full-Band Audio Mode
@@ -4854,12 +4829,9 @@ print("🔒 Hardware closed and DMA memory released.")
 ```python
 # %% [markdown] Cell 1
 # Notebook 7: FPGA Hardware Frequency Filter & High-Fidelity IFFT Verification
-# 
 # This notebook demonstrates the **FPGA-accelerated real-time Frequency-Domain Filter and Inverse FFT (IFFT)** pipeline (`v1.6.0-rc2`).
-# 
 ### 🔬 Hardware Processing Pipeline:
 # $$\text{Raw Audio } x[n] \xrightarrow{\text{xfft\_0}} \text{Complex Spectrum } X[k] \xrightarrow{\text{axis\_spectral\_mask}} Y[k] \xrightarrow{\text{xfft\_1 (IFFT)}} \text{Filtered Audio } y[n]$$
-# 
 ### Verification Highlights:
 # 1. 📊 **Synchronous 3-DMA Streaming:** Capture Raw Time (DMA 0), Filtered Time (DMA 2), and Spectrum (DMA 1) simultaneously in <2 ms.
 # 2. 🎯 **High-Fidelity 1:1 Amplitude Fidelity:** Unitary inverse Fourier reconstruction preserving exact input amplitude ($V_{\text{pp, filt}} \approx V_{\text{pp, raw}}$ with $< 1\%$ error).
@@ -4937,7 +4909,7 @@ print("✅ AD3 Wavegen active & ready: W1 = 100 Hz Sine (A0), W2 = 2.5 kHz Squar
 
 # %% [markdown] Cell 6
 ## 3. Baseline Test: Filter in Bypass Mode (1:1 Amplitude Fidelity Verification)
-# In bypass mode, the FPGA's `axis_spectral_mask` passes all frequency bins. Raw Time (DMA 0) and Reconstructed Filtered Time (DMA 2) match with $< 1\%$ amplitude error.
+# In bypass mode, the FPGA's `axis_spectral_mask` passes all frequency bins.
 
 # %% [code] Cell 7
 # 1. Ensure filter is in Bypass mode
@@ -4975,7 +4947,7 @@ fig_bypass.show()
 
 # %% [markdown] Cell 8
 ## 4. Test 1: Real-Time FPGA Bassline Isolation (Lowpass Mode: 0 – 250 Hz)
-# Engage the hardware Lowpass filter ($0 - 250\,\text{Hz}$). The $100\,\text{Hz}$ bassline passes with full amplitude, while high frequencies are eliminated in the FPGA fabric.
+# Engage the hardware Lowpass filter ($0 - 250\,\text{Hz}$).
 
 # %% [code] Cell 9
 # Program FPGA filter for Bass Isolation (< 250 Hz)
@@ -5016,7 +4988,7 @@ fig_bass.show()
 
 # %% [markdown] Cell 10
 ## 5. Test 2: Real-Time Stopband Rejection (Highpass Mode > 1 kHz)
-# Switch the filter to **Highpass Mode ($> 1\,\text{kHz}$)**. The $100\,\text{Hz}$ tone is muted by $>20\,\text{dB}$ into a flat line at $1.65\,\text{V}$.
+# Switch the filter to **Highpass Mode ($> 1\,\text{kHz}$)**.
 
 # %% [code] Cell 11
 # Program FPGA filter: Highpass > 1 kHz
@@ -5049,7 +5021,7 @@ fig_high.show()
 
 # %% [markdown] Cell 12
 ## 6. Auditory A/B Comparison: Raw vs. FPGA-Filtered Audio
-# Switch Channel 1 to a **100 Hz Square wave** (rich in high-frequency harmonics). Record 3 seconds of sound and listen to how the FPGA removes the buzzing harmonics to leave a pure, smooth subwoofer bass tone.
+# Switch Channel 1 to a **100 Hz Square wave** (rich in high-frequency harmonics).
 
 # %% [code] Cell 13
 # 1. Update AD3 Channel 1 (A0) to a harsh, harmonic-rich 100 Hz Square wave
